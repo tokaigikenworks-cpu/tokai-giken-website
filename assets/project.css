@@ -1,0 +1,163 @@
+.brand-mark {
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  background: #111 url("images/tokai-giken-mark.svg") center / 145% no-repeat;
+}
+
+.hero-visual {
+  margin: 0;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #f8f8f6;
+}
+
+.hero-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 52%, rgba(235, 93, 36, .08));
+  pointer-events: none;
+}
+
+.hero-visual img {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+}
+
+.hero-visual figcaption {
+  position: absolute;
+  left: 28px;
+  bottom: 25px;
+  font: 500 10px "DM Mono", monospace;
+  letter-spacing: .14em;
+}
+
+.visual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.visual-grid article {
+  background: #f4f3ef;
+}
+
+.visual-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  object-fit: cover;
+  background: #aaa;
+}
+
+.visual-grid article > div {
+  padding: 24px 26px 30px;
+}
+
+.visual-grid span {
+  font: 500 10px "DM Mono", monospace;
+  letter-spacing: .12em;
+  color: #eb5d24;
+}
+
+.visual-grid h3 {
+  margin: 9px 0 7px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.visual-grid p {
+  margin: 0;
+  color: #656158;
+  font-size: 13px;
+}
+
+.original-project {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 720px;
+  background: #0c0c0c;
+  color: #f4f3ef;
+}
+
+.project-image {
+  overflow: hidden;
+}
+
+.project-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-copy {
+  padding: 11vw 8vw;
+  align-self: center;
+}
+
+.project-copy .project-kicker {
+  margin-bottom: 8px;
+  color: #aaa69f;
+  font-size: 13px;
+}
+
+.project-copy h2 {
+  margin-bottom: 24px;
+  color: #f1a432;
+  font-size: clamp(42px, 5vw, 72px);
+}
+
+.project-copy h2 small {
+  font: 400 12px "DM Mono", monospace;
+  letter-spacing: .12em;
+}
+
+.project-copy > p:not(.eyebrow):not(.project-kicker):not(.project-note) {
+  color: #d0ccc4;
+  font-size: 15px;
+}
+
+.project-copy .project-note {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid #333;
+  color: #77736c;
+  font-size: 11px;
+}
+
+.service-image-band {
+  position: relative;
+  overflow: hidden;
+  height: min(62vw, 640px);
+  background: #111;
+}
+
+.service-image-band img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.service-image-band p {
+  position: absolute;
+  left: 5vw;
+  bottom: 25px;
+  margin: 0;
+  color: white;
+  font: 500 10px "DM Mono", monospace;
+  letter-spacing: .13em;
+}
+
+@media (max-width: 740px) {
+  .hero-visual { height: 430px; }
+  .hero-visual img { width: 100%; height: 100%; }
+  .visual-grid { grid-template-columns: 1fr; }
+  .original-project { grid-template-columns: 1fr; min-height: 0; }
+  .project-image { height: 580px; }
+  .project-copy { padding: 75px 7vw; }
+  .service-image-band { height: 520px; }
+}
