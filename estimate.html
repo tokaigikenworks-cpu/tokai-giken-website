@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="トカイ技研 内部用見積作成ツール">
+  <meta name="robots" content="noindex,nofollow">
+  <title>見積作成ツール | トカイ技研</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/project.css">
+  <link rel="stylesheet" href="assets/estimate.css">
+</head>
+<body class="estimate-app-page">
+  <header class="site-header estimate-app-header">
+    <a class="brand" href="index.html" aria-label="トカイ技研 トップページ">
+      <span class="brand-mark" aria-hidden="true"><img src="assets/images/tokai-giken-mark.png" alt=""></span>
+      <span class="brand-name">トカイ技研<small>TOKAI GIKEN</small></span>
+    </a>
+    <button class="menu-button" type="button" aria-label="メニューを開く">MENU</button>
+    <nav>
+      <a href="index.html">公開サイトへ戻る</a>
+      <span class="internal-badge">INTERNAL / LOCAL MVP</span>
+    </nav>
+  </header>
+
+  <main>
+    <section class="page-hero estimate-hero">
+      <div>
+        <p class="eyebrow">ESTIMATE BUILDER</p>
+        <h1>相談内容を、<br>見積書へ整理する。</h1>
+      </div>
+      <p>問い合わせ内容から案件区分と確認事項を整理し、見積明細と印刷用PDFを作成します。入力内容は外部へ送信しません。</p>
+    </section>
+
+    <section class="estimate-workspace" aria-label="見積作成ワークスペース">
+      <form id="estimate-form" class="estimate-editor" autocomplete="off">
+        <section class="tool-panel" aria-labelledby="project-heading">
+          <div class="panel-heading">
+            <span>01</span>
+            <div>
+              <p class="eyebrow">PROJECT</p>
+              <h2 id="project-heading">案件情報</h2>
+            </div>
+          </div>
+          <div class="tool-form-grid">
+            <label>見積番号<input id="quote-number" name="quoteNumber" type="text"></label>
+            <label>発行日<input id="issue-date" name="issueDate" type="date"></label>
+            <div class="recipient-field">
+              <label>宛名<input id="client-name" name="clientName" type="text" placeholder="会社名・お名前"></label>
+              <label>敬称<select id="honorific" name="honorific"><option>御中</option><option>様</option></select></label>
+            </div>
+            <label>案件名<input id="project-name" name="projectName" type="text" placeholder="例：車両用カバー CAD再構築"></label>
+            <label>見積有効期限<input id="valid-until" name="validUntil" type="date"></label>
+            <label>希望納期<input id="delivery" name="delivery" type="text" placeholder="例：正式発注後4週間"></label>
+          </div>
+        </section>
+
+        <section class="tool-panel" aria-labelledby="source-heading">
+          <div class="panel-heading">
+            <span>02</span>
+            <div>
+              <p class="eyebrow">SOURCE</p>
+              <h2 id="source-heading">相談内容を取り込む</h2>
+            </div>
+          </div>
+          <label class="full-label">問い合わせ内容
+            <textarea id="inquiry-text" name="inquiryText" rows="7" placeholder="メール・DM・フォーム回答などを貼り付けてください。内容は案件判定の補助に使います。"></textarea>
+          </label>
+          <label id="capture-zone" class="capture-zone" tabindex="0">
+            <input id="source-images" type="file" accept="image/*" multiple>
+            <strong>スクリーンショットを選択／貼り付け</strong>
+            <small>画像はこの端末内での確認用です。OCRと外部送信は行いません。</small>
+            <span id="capture-status">画像未選択</span>
+          </label>
+          <div id="capture-preview" class="capture-preview" aria-live="polite"></div>
+        </section>
+
+        <section class="tool-panel" aria-labelledby="classification-heading">
+          <div class="panel-heading">
+            <span>03</span>
+            <div>
+              <p class="eyebrow">CLASSIFY</p>
+              <h2 id="classification-heading">案件を判定する</h2>
+            </div>
+          </div>
+          <div class="tool-form-grid">
+            <label>主な目的
+              <select id="purpose" name="purpose">
+                <option value="">選択してください</option>
+                <option value="data">現物を3Dデータにしたい</option>
+                <option value="print">3Dプリントしたい</option>
+                <option value="reproduce">同じ物を作りたい</option>
+                <option value="vehicle">車両・機器へ取り付けたい</option>
+                <option value="sell">販売・量産につなげたい</option>
+                <option value="other">その他・まだ未整理</option>
+              </select>
+            </label>
+            <label>元になる情報
+              <select id="source-type" name="sourceType">
+                <option value="">選択してください</option>
+                <option value="physical">現物がある</option>
+                <option value="cad">3Dデータ・図面がある</option>
+                <option value="photo">写真・概略寸法のみ</option>
+                <option value="none">まだ何もない</option>
+              </select>
+            </label>
+            <label>取付・嵌合
+              <select id="fitting" name="fitting">
+                <option value="none">なし</option>
+                <option value="known">あり／相手形状を確認できる</option>
+                <option value="unknown">あり／相手形状が不明</option>
+              </select>
+            </label>
+            <label>希望する納品物
+              <select id="deliverable" name="deliverable">
+                <option value="reference">確認用3Dデータ</option>
+                <option value="cad">編集可能なCADデータ</option>
+                <option value="production">製作用データ</option>
+                <option value="prototype">試作品＋設計データ</option>
+                <option value="support">開発・外注支援まで</option>
+              </select>
+            </label>
+            <label>安全性・法規への影響
+              <select id="safety" name="safety">
+                <option value="low">低い／非保安部品</option>
+                <option value="unknown">不明・要確認</option>
+                <option value="high">高い／強度・法規確認が必要</option>
+              </select>
+            </label>
+            <label>希望時期
+              <select id="rush" name="rush">
+                <option value="normal">通常</option>
+                <option value="rush">特急・短納期希望</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="classification-result" class="classification-result" aria-live="polite">
+            <div>
+              <span id="category-code">—</span>
+              <div>
+                <small>RECOMMENDED CLASS</small>
+                <strong id="category-label">条件を選択してください</strong>
+              </div>
+            </div>
+            <p id="category-reason">目的と納品物から、基本作業区分を提案します。</p>
+            <ul id="classification-warnings"></ul>
+            <button id="apply-category" class="button primary" type="button" disabled>基本作業を明細へ反映</button>
+          </div>
+        </section>
+
+        <section class="tool-panel line-items-panel" aria-labelledby="items-heading">
+          <div class="panel-heading">
+            <span>04</span>
+            <div>
+              <p class="eyebrow">ITEMS</p>
+              <h2 id="items-heading">見積明細</h2>
+            </div>
+          </div>
+          <div class="line-items-wrap">
+            <table class="line-items-table">
+              <thead><tr><th scope="col">内容</th><th scope="col">数量</th><th scope="col">単位</th><th scope="col">単価</th><th scope="col"><span class="visually-hidden">削除</span></th></tr></thead>
+              <tbody id="line-items"></tbody>
+            </table>
+          </div>
+          <button id="add-item" class="text-button" type="button">＋ 明細を追加</button>
+          <div class="amount-settings">
+            <label>消費税率
+              <select id="tax-rate" name="taxRate">
+                <option value="10">10%</option>
+                <option value="0">0%</option>
+              </select>
+            </label>
+            <dl>
+              <div><dt>小計</dt><dd id="editor-subtotal">¥0</dd></div>
+              <div><dt>消費税</dt><dd id="editor-tax">¥0</dd></div>
+              <div class="editor-total"><dt>合計</dt><dd id="editor-total">¥0</dd></div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="tool-panel" aria-labelledby="terms-heading">
+          <div class="panel-heading">
+            <span>05</span>
+            <div>
+              <p class="eyebrow">TERMS</p>
+              <h2 id="terms-heading">条件・備考</h2>
+            </div>
+          </div>
+          <div class="tool-form-grid">
+            <label>支払条件<input id="payment" name="payment" type="text" value="別途協議"></label>
+            <label>納品形式<input id="output-format" name="outputFormat" type="text" placeholder="例：STEP / STL / PDF"></label>
+          </div>
+          <label class="full-label">備考
+            <textarea id="notes" name="notes" rows="6" placeholder="送料、出張、外注加工、特殊材料、追加試作、追加修正などの別途条件を記載します。"></textarea>
+          </label>
+        </section>
+
+        <div class="tool-actions">
+          <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
+          <button id="copy-summary" class="button secondary-button" type="button">内容をコピー</button>
+          <button id="save-json" class="button secondary-button" type="button">JSON保存</button>
+          <label class="button secondary-button file-button">JSON読込<input id="load-json" type="file" accept="application/json,.json"></label>
+          <button id="reset-estimate" class="text-button danger" type="button">入力をリセット</button>
+          <p id="action-status" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+
+      <aside class="quote-preview-column" aria-label="見積書プレビュー">
+        <div class="preview-toolbar">
+          <p><span></span> LIVE PREVIEW</p>
+          <small>A4 / PRINT READY</small>
+        </div>
+        <article id="quote-preview" class="quote-sheet">
+          <header class="quote-header">
+            <div class="quote-brand">
+              <img src="assets/images/tokai-giken-mark.png" alt="トカイ技研">
+              <div><strong>トカイ技研</strong><small>TOKAI GIKEN</small></div>
+            </div>
+            <div class="quote-title"><span>ESTIMATE</span><h2>御見積書</h2></div>
+          </header>
+
+          <div class="quote-meta">
+            <p><span>見積番号</span><strong id="preview-number">—</strong></p>
+            <p><span>発行日</span><strong id="preview-date">—</strong></p>
+          </div>
+
+          <section class="quote-recipient">
+            <h3><span id="preview-client">宛名未入力</span> <span id="preview-honorific">御中</span></h3>
+            <p>下記の通り御見積申し上げます。</p>
+          </section>
+
+          <section class="quote-project">
+            <span>PROJECT</span>
+            <strong id="preview-project">案件名未入力</strong>
+          </section>
+
+          <section class="quote-grand-total">
+            <span>御見積金額（税込）</span>
+            <strong id="preview-grand-total">¥0</strong>
+          </section>
+
+          <table class="quote-items">
+            <thead><tr><th scope="col">内容</th><th scope="col">数量</th><th scope="col">単位</th><th scope="col">単価</th><th scope="col">金額</th></tr></thead>
+            <tbody id="preview-items"><tr class="empty-row"><td colspan="5">見積明細を入力してください</td></tr></tbody>
+          </table>
+
+          <div class="quote-totals">
+            <dl>
+              <div><dt>小計</dt><dd id="preview-subtotal">¥0</dd></div>
+              <div><dt>消費税</dt><dd id="preview-tax">¥0</dd></div>
+              <div><dt>合計</dt><dd id="preview-total">¥0</dd></div>
+            </dl>
+          </div>
+
+          <section class="quote-conditions">
+            <div><span>見積有効期限</span><strong id="preview-valid-until">—</strong></div>
+            <div><span>納期</span><strong id="preview-delivery">別途協議</strong></div>
+            <div><span>支払条件</span><strong id="preview-payment">別途協議</strong></div>
+            <div><span>納品形式</span><strong id="preview-output-format">別途協議</strong></div>
+          </section>
+
+          <section class="quote-notes">
+            <span>備考</span>
+            <p id="preview-notes">送料、出張確認、外注加工、特殊材料、追加試作等が必要な場合は、事前確認のうえ別途お見積りします。</p>
+          </section>
+
+          <footer class="quote-footer">
+            <div><strong>トカイ技研</strong><small>3D SCAN / CAD DESIGN / PROTOTYPE</small></div>
+            <p>tokai-giken.com</p>
+          </footer>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script src="assets/script.js"></script>
+  <script src="assets/estimate.js"></script>
+</body>
+</html>
