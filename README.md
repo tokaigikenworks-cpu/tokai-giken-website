@@ -6,7 +6,7 @@ Cloudflare Pages への配置を想定した、ビルド不要の静的サイト
 
 - `index.html`：トップ
 - `service.html`：対応範囲
-- `process.html`：進め方・料金目安
+- `process.html`：進め方・基本料金
 - `contact.html`：相談・見積フォーム
 
 ## 公開時に行うこと
@@ -20,4 +20,3 @@ Cloudflare Pages への配置を想定した、ビルド不要の静的サイト
 
 `contact.html` のフォームは Netlify Forms 記法を仮置きしています。Cloudflare Pages ではそのままメール送信されません。
 公開前に Cloudflare Workers / Pages Functions + メール送信サービス、または外部フォームサービスへ接続します。
-

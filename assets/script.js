@@ -1,2 +1,10 @@
 const button=document.querySelector('.menu-button');
-if(button)button.addEventListener('click',()=>document.querySelector('.site-header').classList.toggle('open'));
+const header=document.querySelector('.site-header');
+
+if(button&&header){
+  button.setAttribute('aria-expanded','false');
+  button.addEventListener('click',()=>{
+    const isOpen=header.classList.toggle('open');
+    button.setAttribute('aria-expanded',String(isOpen));
+  });
+}
