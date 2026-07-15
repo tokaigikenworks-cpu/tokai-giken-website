@@ -1317,8 +1317,7 @@
 
 .brand-mark img {
   object-fit: contain;
-  transform: scale(1.58);
-  transform-origin: center;
+  transform: none;
 }
 
 .brand-name {
@@ -1429,10 +1428,6 @@
     width: 38px;
     height: 38px;
     flex-basis: 38px;
-  }
-
-  .brand-mark img {
-    transform: scale(1.62);
   }
 
   .process-heading,
