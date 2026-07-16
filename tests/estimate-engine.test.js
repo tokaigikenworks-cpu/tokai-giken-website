@@ -15,6 +15,11 @@ assert.equal(category({ purpose: 'vehicle', fitting: 'known', deliverable: 'prot
 assert.equal(category({ purpose: 'sell', deliverable: 'support', safety: 'low' }), 'E');
 assert.equal(category({ purpose: 'data', deliverable: 'reference', safety: 'high' }), 'E');
 assert.equal(category({ inquiryText: '廃番部品と同じ物を再製作したい', deliverable: 'cad', safety: 'low' }), 'B');
+assert.equal(engine.recommendPaymentType({ code: 'A' }), 'prepaid');
+assert.equal(engine.recommendPaymentType({ code: 'D' }), 'split');
+assert.equal(engine.getPaymentDetails('split').quoteLabel, '着手金50％・残金50％');
+assert.match(engine.getPaymentDetails('split').note, /成果物の最終確認後に残金50％をご請求/);
+assert.match(engine.getPaymentDetails('split').note, /残金のご入金確認後に正式な最終データを納品/);
 
 const fittingResult = engine.classifyCase({
   purpose: 'reproduce',
@@ -43,5 +48,6 @@ const summary = engine.buildSummary({
 assert.match(summary, /TKG-EST-TEST/);
 assert.match(summary, /合計：¥66,000/);
 assert.match(summary, /支払条件：前払い（ご入金確認後に着手）/);
+assert.match(summary, /支払条件補足：ご入金の確認後に業務へ着手いたします。/);
 
 console.log('estimate-engine: all tests passed');
