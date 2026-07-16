@@ -25,11 +25,7 @@
 
   <main>
     <section class="page-hero estimate-hero">
-      <div>
-        <p class="eyebrow">ESTIMATE BUILDER</p>
-        <h1>相談内容を、<br>見積書へ整理する。</h1>
-      </div>
-      <p>問い合わせ内容から案件区分と確認事項を整理し、見積明細と印刷用PDFを作成します。入力内容は外部へ送信しません。</p>
+      <h1>トカイ技研の見積ツール</h1>
     </section>
 
     <section class="estimate-workspace" aria-label="見積作成ワークスペース">
@@ -113,7 +109,7 @@
             </label>
             <label>希望する納品物
               <select id="deliverable" name="deliverable">
-                <option value="reference">確認用3Dデータ</option>
+                <option value="reference">3Dデータ（点群またはメッシュ）</option>
                 <option value="cad">編集可能なCADデータ</option>
                 <option value="production">製作用データ</option>
                 <option value="prototype">試作品＋設計データ</option>
@@ -135,17 +131,19 @@
             </label>
           </div>
 
+          <p class="classification-intro">入力内容から推奨される基本作業を判定し、見積明細へ追加できます。</p>
           <div id="classification-result" class="classification-result" aria-live="polite">
             <div>
               <span id="category-code">—</span>
               <div>
-                <small>RECOMMENDED CLASS</small>
-                <strong id="category-label">条件を選択してください</strong>
+                <small>推奨作業区分 / RECOMMENDED CLASS</small>
+                <strong id="category-label">条件を選択すると推奨作業を判定します</strong>
               </div>
             </div>
-            <p id="category-reason">目的と納品物から、基本作業区分を提案します。</p>
+            <p id="category-reason">判定後、推奨作業を見積明細へ追加できます。</p>
             <ul id="classification-warnings"></ul>
-            <button id="apply-category" class="button primary" type="button" disabled>基本作業を明細へ反映</button>
+            <button id="apply-category" class="button primary" type="button" disabled>推奨作業を見積明細へ追加</button>
+            <p class="classification-edit-note">追加後に、作業内容・数量・金額を編集できます。</p>
           </div>
         </section>
 
@@ -188,7 +186,7 @@
             </div>
           </div>
           <div class="tool-form-grid">
-            <label>支払条件<input id="payment" name="payment" type="text" value="別途協議"></label>
+            <label>支払条件<input id="payment" name="payment" type="text" value="前払い（ご入金確認後に着手）"></label>
             <label>納品形式<input id="output-format" name="outputFormat" type="text" placeholder="例：STEP / STL / PDF"></label>
           </div>
           <label class="full-label">備考
@@ -199,8 +197,11 @@
         <div class="tool-actions">
           <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
           <button id="copy-summary" class="button secondary-button" type="button">内容をコピー</button>
-          <button id="save-json" class="button secondary-button" type="button">JSON保存</button>
-          <label class="button secondary-button file-button">JSON読込<input id="load-json" type="file" accept="application/json,.json"></label>
+          <div class="edit-data-actions">
+            <button id="save-json" class="button secondary-button" type="button">編集データを保存</button>
+            <label class="button secondary-button file-button">編集データを読み込む<input id="load-json" type="file" accept="application/json,.json"></label>
+            <small>見積内容を後から再編集するためのデータです。</small>
+          </div>
           <button id="reset-estimate" class="text-button danger" type="button">入力をリセット</button>
           <p id="action-status" role="status" aria-live="polite"></p>
         </div>
@@ -256,7 +257,7 @@
           <section class="quote-conditions">
             <div><span>見積有効期限</span><strong id="preview-valid-until">—</strong></div>
             <div><span>納期</span><strong id="preview-delivery">別途協議</strong></div>
-            <div><span>支払条件</span><strong id="preview-payment">別途協議</strong></div>
+            <div><span>支払条件</span><strong id="preview-payment">前払い（ご入金確認後に着手）</strong></div>
             <div><span>納品形式</span><strong id="preview-output-format">別途協議</strong></div>
           </section>
 
