@@ -41,6 +41,7 @@
   };
 
   const DEFAULT_NOTES = '送料、出張確認、外注加工、特殊材料、追加試作等が必要な場合は、事前確認のうえ別途お見積りします。';
+  const DEFAULT_PAYMENT = '前払い（ご入金確認後に着手）';
 
   function categoryAtLeast(current, minimum) {
     if (!current) return minimum;
@@ -160,7 +161,7 @@
       '',
       '見積有効期限：' + formatDate(data.validUntil),
       '納期：' + (data.delivery || '別途協議'),
-      '支払条件：' + (data.payment || '別途協議'),
+      '支払条件：' + (data.payment || DEFAULT_PAYMENT),
       '納品形式：' + (data.outputFormat || '別途協議'),
       '備考：' + (data.notes || DEFAULT_NOTES)
     );
@@ -170,6 +171,7 @@
   const engine = {
     CATEGORIES,
     DEFAULT_NOTES,
+    DEFAULT_PAYMENT,
     classifyCase,
     calculateTotals,
     formatYen,
@@ -253,10 +255,10 @@
 
     if (!result.category) {
       code.textContent = '—';
-      label.textContent = '条件を選択してください';
-      reason.textContent = '目的と納品物から、基本作業区分を提案します。';
+      label.textContent = '条件を選択すると推奨作業を判定します';
+      reason.textContent = '判定後、推奨作業を見積明細へ追加できます。';
       applyButton.disabled = true;
-      applyButton.textContent = '基本作業を明細へ反映';
+      applyButton.textContent = '推奨作業を見積明細へ追加';
       return result;
     }
 
@@ -269,7 +271,7 @@
       warningList.appendChild(item);
     });
     applyButton.disabled = !result.category.auto;
-    applyButton.textContent = result.category.auto ? '基本作業を明細へ反映' : '個別見積：範囲確認が必要';
+    applyButton.textContent = result.category.auto ? '推奨作業を見積明細へ追加' : '個別見積：範囲確認が必要';
     return result;
   }
 
@@ -410,7 +412,7 @@
     setText('preview-total', formatYen(totals.total));
     setText('preview-valid-until', formatDate(data.validUntil));
     setText('preview-delivery', data.delivery || '別途協議');
-    setText('preview-payment', data.payment || '別途協議');
+    setText('preview-payment', data.payment || DEFAULT_PAYMENT);
     setText('preview-output-format', data.outputFormat || '別途協議');
     setText('preview-notes', data.notes || DEFAULT_NOTES);
 
@@ -506,7 +508,7 @@
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setStatus('見積データをJSONで保存しました。');
+    setStatus('編集データを保存しました。');
   }
 
   function setFieldValue(key, value) {
@@ -531,7 +533,7 @@
     itemContainer.replaceChildren();
     clearImagePreviews();
     setInitialValues();
-    fields.payment.value = '別途協議';
+    fields.payment.value = DEFAULT_PAYMENT;
     addLineItem();
     updateClassification();
     updatePreview();
@@ -576,9 +578,9 @@
     reader.addEventListener('load', function () {
       try {
         loadData(JSON.parse(String(reader.result)));
-        setStatus('JSONから見積データを読み込みました。');
+        setStatus('編集データを読み込み、入力内容を復元しました。');
       } catch (error) {
-        setStatus(error.message || 'JSONを読み込めませんでした。');
+        setStatus(error.message || '編集データを読み込めませんでした。');
       }
       event.target.value = '';
     });
