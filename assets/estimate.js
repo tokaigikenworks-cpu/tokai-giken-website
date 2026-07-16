@@ -42,6 +42,34 @@
 
   const DEFAULT_NOTES = '送料、出張確認、外注加工、特殊材料、追加試作等が必要な場合は、事前確認のうえ別途お見積りします。';
   const DEFAULT_PAYMENT = '前払い（ご入金確認後に着手）';
+  const PAYMENT_TERMS = {
+    prepaid: {
+      formLabel: DEFAULT_PAYMENT,
+      quoteLabel: DEFAULT_PAYMENT,
+      note: 'ご入金の確認後に業務へ着手いたします。'
+    },
+    split: {
+      formLabel: '分割払い（着手金50％・残金50％）',
+      quoteLabel: '着手金50％・残金50％',
+      note: '着手金のご入金確認後に業務を開始し、成果物の最終確認後に残金50％をご請求します。残金のご入金確認後に正式な最終データを納品します。'
+    }
+  };
+
+  function recommendPaymentType(category) {
+    return category && CATEGORY_ORDER.indexOf(category.code) >= CATEGORY_ORDER.indexOf('D') ? 'split' : 'prepaid';
+  }
+
+  function getPaymentDetails(type, customValue) {
+    if (type === 'split') return PAYMENT_TERMS.split;
+    if (type === 'custom') {
+      return {
+        formLabel: String(customValue || '').trim() || '個別設定（内容未入力）',
+        quoteLabel: String(customValue || '').trim() || '個別設定（内容未入力）',
+        note: '支払時期・金額は上記の個別条件に従います。'
+      };
+    }
+    return PAYMENT_TERMS.prepaid;
+  }
 
   function categoryAtLeast(current, minimum) {
     if (!current) return minimum;
@@ -137,6 +165,7 @@
   function buildSummary(data) {
     const items = Array.isArray(data.items) ? data.items : [];
     const totals = calculateTotals(items, data.taxRate);
+    const payment = getPaymentDetails(data.paymentType, data.customPayment);
     const lines = [
       '御見積書',
       '見積番号：' + (data.quoteNumber || '—'),
@@ -161,7 +190,8 @@
       '',
       '見積有効期限：' + formatDate(data.validUntil),
       '納期：' + (data.delivery || '別途協議'),
-      '支払条件：' + (data.payment || DEFAULT_PAYMENT),
+      '支払条件：' + (data.payment || payment.quoteLabel),
+      '支払条件補足：' + (data.paymentNote || payment.note),
       '納品形式：' + (data.outputFormat || '別途協議'),
       '備考：' + (data.notes || DEFAULT_NOTES)
     );
@@ -172,6 +202,9 @@
     CATEGORIES,
     DEFAULT_NOTES,
     DEFAULT_PAYMENT,
+    PAYMENT_TERMS,
+    recommendPaymentType,
+    getPaymentDetails,
     classifyCase,
     calculateTotals,
     formatYen,
@@ -205,7 +238,8 @@
     safety: byId('safety'),
     rush: byId('rush'),
     taxRate: byId('tax-rate'),
-    payment: byId('payment'),
+    paymentType: byId('payment-type'),
+    customPayment: byId('custom-payment'),
     outputFormat: byId('output-format'),
     notes: byId('notes')
   };
@@ -213,6 +247,7 @@
   const itemContainer = byId('line-items');
   let itemSequence = 0;
   let previewObjectUrls = [];
+  let paymentManuallyChanged = false;
 
   function toLocalISODate(date) {
     const offset = date.getTimezoneOffset();
@@ -244,6 +279,19 @@
     };
   }
 
+  function updatePaymentFields() {
+    const isCustom = fields.paymentType.value === 'custom';
+    byId('custom-payment-label').hidden = !isCustom;
+    fields.customPayment.disabled = !isCustom;
+  }
+
+  function syncPaymentWithClassification(result) {
+    if (!paymentManuallyChanged) {
+      fields.paymentType.value = recommendPaymentType(result.category);
+    }
+    updatePaymentFields();
+  }
+
   function updateClassification() {
     const result = classifyCase(currentClassificationInput());
     const code = byId('category-code');
@@ -259,6 +307,7 @@
       reason.textContent = '判定後、推奨作業を見積明細へ追加できます。';
       applyButton.disabled = true;
       applyButton.textContent = '推奨作業を見積明細へ追加';
+      syncPaymentWithClassification(result);
       return result;
     }
 
@@ -272,6 +321,7 @@
     });
     applyButton.disabled = !result.category.auto;
     applyButton.textContent = result.category.auto ? '推奨作業を見積明細へ追加' : '個別見積：範囲確認が必要';
+    syncPaymentWithClassification(result);
     return result;
   }
 
@@ -367,8 +417,9 @@
   }
 
   function readData() {
+    const payment = getPaymentDetails(fields.paymentType.value, fields.customPayment.value);
     return {
-      version: 1,
+      version: 2,
       quoteNumber: fields.quoteNumber.value.trim(),
       issueDate: fields.issueDate.value,
       clientName: fields.clientName.value.trim(),
@@ -384,7 +435,10 @@
       safety: fields.safety.value,
       rush: fields.rush.value,
       taxRate: normalizeNumber(fields.taxRate.value),
-      payment: fields.payment.value.trim(),
+      paymentType: fields.paymentType.value,
+      customPayment: fields.customPayment.value.trim(),
+      payment: payment.quoteLabel,
+      paymentNote: payment.note,
       outputFormat: fields.outputFormat.value.trim(),
       notes: fields.notes.value,
       items: readItems()
@@ -413,6 +467,7 @@
     setText('preview-valid-until', formatDate(data.validUntil));
     setText('preview-delivery', data.delivery || '別途協議');
     setText('preview-payment', data.payment || DEFAULT_PAYMENT);
+    setText('preview-payment-note', data.paymentNote || PAYMENT_TERMS.prepaid.note);
     setText('preview-output-format', data.outputFormat || '別途協議');
     setText('preview-notes', data.notes || DEFAULT_NOTES);
 
@@ -515,12 +570,24 @@
     if (fields[key] && value != null) fields[key].value = String(value);
   }
 
+  function inferPaymentType(payment) {
+    const value = String(payment || '');
+    if (/着手金50/.test(value)) return 'split';
+    if (!value || /前払い|入金確認後に着手/.test(value)) return 'prepaid';
+    return 'custom';
+  }
+
   function loadData(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) throw new Error('見積データの形式が正しくありません。');
+    const paymentType = data.paymentType || inferPaymentType(data.payment);
     Object.keys(fields).forEach(function (key) {
-      if (key !== 'taxRate') setFieldValue(key, data[key]);
+      if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') setFieldValue(key, data[key]);
     });
     setFieldValue('taxRate', data.taxRate == null ? 10 : data.taxRate);
+    fields.paymentType.value = paymentType;
+    fields.customPayment.value = data.customPayment || (paymentType === 'custom' ? data.payment || '' : '');
+    paymentManuallyChanged = true;
+    updatePaymentFields();
     itemContainer.replaceChildren();
     data.items.forEach(addLineItem);
     if (!data.items.length) updatePreview();
@@ -533,18 +600,23 @@
     itemContainer.replaceChildren();
     clearImagePreviews();
     setInitialValues();
-    fields.payment.value = DEFAULT_PAYMENT;
+    paymentManuallyChanged = false;
+    fields.paymentType.value = 'prepaid';
+    fields.customPayment.value = '';
+    updatePaymentFields();
     addLineItem();
     updateClassification();
     updatePreview();
     setStatus('入力内容をリセットしました。');
   }
 
-  form.addEventListener('input', function () {
+  form.addEventListener('input', function (event) {
+    if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
   });
-  form.addEventListener('change', function () {
+  form.addEventListener('change', function (event) {
+    if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
   });
@@ -571,6 +643,7 @@
   });
   byId('copy-summary').addEventListener('click', copySummary);
   byId('save-json').addEventListener('click', downloadJson);
+  byId('load-json-button').addEventListener('click', function () { byId('load-json').click(); });
   byId('load-json').addEventListener('change', function (event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -589,6 +662,7 @@
   byId('reset-estimate').addEventListener('click', resetForm);
 
   setInitialValues();
+  updatePaymentFields();
   addLineItem();
   updateClassification();
   updatePreview();
