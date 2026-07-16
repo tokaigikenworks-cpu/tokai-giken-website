@@ -21,25 +21,17 @@
 }
 
 .estimate-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, .8fr);
-  align-items: end;
-  gap: clamp(40px, 7vw, 110px);
-  padding-top: 58px;
+  display: block;
+  padding-top: 34px;
+  padding-bottom: 34px;
   background: var(--tool-dark);
   color: #f4f3ef;
 }
 
 .estimate-hero h1 {
   margin-bottom: 0;
-  font-size: clamp(38px, 4.6vw, 67px);
-}
-
-.estimate-hero > p {
-  margin: 0 0 9px;
-  color: #aaa69f;
-  font-size: 13px;
-  line-height: 1.9;
+  font-size: clamp(24px, 3vw, 38px);
+  letter-spacing: .02em;
 }
 
 .estimate-workspace {
@@ -232,6 +224,13 @@
   color: #f4f3ef;
 }
 
+.classification-intro {
+  margin: 0;
+  color: #656158;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
 .classification-result > div:first-child {
   display: flex;
   align-items: center;
@@ -298,6 +297,13 @@
 #apply-category:disabled {
   cursor: not-allowed;
   opacity: .42;
+}
+
+.classification-edit-note {
+  margin: 10px 0 0;
+  color: #b8b5ae;
+  font-size: 10px;
+  line-height: 1.7;
 }
 
 .line-items-wrap {
@@ -436,6 +442,19 @@
   padding: 14px 18px;
 }
 
+.edit-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.edit-data-actions small {
+  flex-basis: 100%;
+  color: #656158;
+  font-size: 10px;
+}
+
 .secondary-button {
   border: 1px solid var(--ink);
   background: transparent;
@@ -499,6 +518,8 @@
 }
 
 .quote-sheet {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
   aspect-ratio: 210 / 297;
@@ -765,6 +786,7 @@
 }
 
 .quote-notes {
+  flex: 1 0 70px;
   margin-top: 3.5%;
 }
 
@@ -777,8 +799,6 @@
 }
 
 .quote-notes p {
-  max-height: 5.4em;
-  overflow: hidden;
   margin: 1.5% 0 0;
   color: #656158;
   font-size: clamp(5px, .52vw, 7px);
@@ -790,7 +810,7 @@
   display: flex;
   align-items: end;
   justify-content: space-between;
-  margin-top: 4%;
+  margin-top: 3%;
   padding-top: 2%;
   border-top: 1px solid #d4d1ca;
 }
@@ -852,18 +872,12 @@
   }
 
   .estimate-hero {
-    grid-template-columns: 1fr;
-    gap: 18px;
-    padding-top: 38px;
-    padding-bottom: 34px;
+    padding-top: 28px;
+    padding-bottom: 28px;
   }
 
   .estimate-hero h1 {
     font-size: clamp(30px, 8.5vw, 38px);
-  }
-
-  .estimate-hero > p {
-    font-size: 12px;
   }
 
   .estimate-workspace {
@@ -918,6 +932,15 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .edit-data-actions {
+    display: contents;
+  }
+
+  .edit-data-actions small {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
   .tool-actions .button,
   .tool-actions .text-button {
     width: 100%;
@@ -948,7 +971,8 @@
   html,
   body {
     width: 210mm;
-    height: 297mm;
+    min-height: 297mm;
+    height: auto;
     margin: 0;
     background: #fff;
   }
@@ -976,12 +1000,30 @@
 
   .quote-sheet {
     width: 210mm;
-    height: 297mm;
+    height: auto;
     min-height: 297mm;
     margin: 0;
     padding: 14mm 16mm 12mm;
     aspect-ratio: auto;
     box-shadow: none;
+  }
+
+  .quote-items thead {
+    display: table-header-group;
+  }
+
+  .quote-items tr,
+  .quote-totals,
+  .quote-conditions,
+  .quote-notes,
+  .quote-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .quote-notes {
+    flex: 1 0 20mm;
+    min-height: 20mm;
   }
 
   .quote-title h2 {
