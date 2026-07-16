@@ -67,6 +67,9 @@
   overflow: hidden;
   background: #d5d2ca;
 }
+.empty-work-media {
+  background: #242424;
+}
 .process-media {
   position: relative;
   overflow: hidden;
