@@ -42,5 +42,6 @@ const summary = engine.buildSummary({
 });
 assert.match(summary, /TKG-EST-TEST/);
 assert.match(summary, /合計：¥66,000/);
+assert.match(summary, /支払条件：前払い（ご入金確認後に着手）/);
 
 console.log('estimate-engine: all tests passed');
