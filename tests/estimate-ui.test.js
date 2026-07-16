@@ -17,6 +17,12 @@ dom.window.eval(script);
 
 const document = dom.window.document;
 const change = new dom.window.Event('change', { bubbles: true });
+assert.equal(document.querySelector('.estimate-hero h1').textContent.trim(), 'トカイ技研の見積ツール');
+assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
+assert.equal(document.querySelector('#payment').value, '前払い（ご入金確認後に着手）');
+assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
+assert.equal(document.querySelector('#save-json').textContent.trim(), '編集データを保存');
+assert.match(document.querySelector('.edit-data-actions small').textContent, /後から再編集/);
 document.querySelector('#purpose').value = 'vehicle';
 document.querySelector('#fitting').value = 'known';
 document.querySelector('#deliverable').value = 'prototype';
@@ -24,6 +30,7 @@ document.querySelector('#purpose').dispatchEvent(change);
 
 assert.equal(document.querySelector('#category-code').textContent, 'D');
 assert.equal(document.querySelector('#apply-category').disabled, false);
+assert.equal(document.querySelector('#apply-category').textContent, '推奨作業を見積明細へ追加');
 document.querySelector('#apply-category').click();
 assert.equal(document.querySelectorAll('#line-items tr').length, 2);
 assert.equal(document.querySelector('[data-category-item="D"] .item-price').value, '200000');
