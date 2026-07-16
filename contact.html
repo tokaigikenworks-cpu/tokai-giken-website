@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="トカイ技研へのご相談・見積依頼。写真添付に対応しています。">
+  <meta name="site-version" content="v8">
   <title>相談・見積依頼 | トカイ技研</title>
   <link rel="stylesheet" href="assets/style.css">
   <link rel="stylesheet" href="assets/project.css">
@@ -31,8 +32,10 @@
     </section>
 
     <section class="section form-section">
-      <form name="contact" method="POST" data-netlify="true" enctype="multipart/form-data">
-        <input type="hidden" name="form-name" value="contact">
+      <p class="form-guidance">「必須」の表示がない項目は任意です。</p>
+      <form name="contact" method="POST" action="/api/contact" enctype="multipart/form-data">
+        <input type="hidden" name="submission_token" value="">
+        <label class="honeypot" aria-hidden="true">ウェブサイト<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         <div class="form-grid">
           <label>お名前 <b>必須</b><input required type="text" name="name" autocomplete="name"></label>
           <label>会社名・屋号<input type="text" name="company" autocomplete="organization"></label>
@@ -43,12 +46,13 @@
         <div class="form-grid">
           <label>対象物<input type="text" name="object" placeholder="例：センターコンソール、商品スタンド"></label>
           <label>車種・型式<input type="text" name="vehicle" placeholder="車両以外の場合は空欄で構いません"></label>
-          <label>予算感 <span class="optional">任意</span><small class="field-help">未定でも構いません。内容に合う進め方を判断するための目安です。</small><select name="budget"><option value="">選択してください</option><option>2万円未満</option><option>2〜5万円</option><option>5〜10万円</option><option>10万円以上</option><option>未定</option></select></label>
+          <label>予算感 <span class="optional">任意</span><small class="field-help">未定でも構いません。内容に合う進め方を判断するための目安です。</small><select name="budget"><option value="">選択してください</option><option>2万円未満</option><option>2〜5万円</option><option>5〜10万円</option><option>10〜20万円</option><option>20〜30万円</option><option>30万円以上</option><option>未定</option></select></label>
           <label>3Dデータの有無<select name="data"><option value="">選択してください</option><option>ある</option><option>ない</option><option>わからない</option></select></label>
         </div>
-        <label class="file-label">写真・参考資料を添付<input type="file" name="attachment" accept="image/*,.pdf,.stl,.step,.stp" multiple><small>対象物・取付場所・参考イメージが分かる写真があると確認しやすくなります。</small></label>
+        <label class="file-label">写真・参考資料を添付<input type="file" name="attachment" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.stl,.step,.stp" multiple><small>対象物・取付場所・参考イメージが分かる写真があると確認しやすくなります。最大10点、1ファイル10MB、合計20MBまで。</small></label>
         <button class="button primary submit" type="submit">内容を送信する</button>
-        <p class="form-note">送信前に、プライバシーポリシーとご相談に関する注意事項を掲載します。</p>
+        <p class="form-status" role="status" aria-live="polite"></p>
+        <p class="form-note">送信いただいた情報は、ご相談内容の確認・見積・連絡のために使用します。</p>
       </form>
     </section>
   </main>
