@@ -186,8 +186,17 @@
             </div>
           </div>
           <div class="tool-form-grid">
-            <label>支払条件<input id="payment" name="payment" type="text" value="前払い（ご入金確認後に着手）"></label>
+            <label>支払条件
+              <select id="payment-type" name="paymentType">
+                <option value="prepaid">前払い（ご入金確認後に着手）</option>
+                <option value="split">分割払い（着手金50％・残金50％）</option>
+                <option value="custom">個別設定</option>
+              </select>
+            </label>
             <label>納品形式<input id="output-format" name="outputFormat" type="text" placeholder="例：STEP / STL / PDF"></label>
+            <label id="custom-payment-label" class="full-label" hidden>個別の支払条件
+              <input id="custom-payment" name="customPayment" type="text" placeholder="例：月末締め・翌月末払い">
+            </label>
           </div>
           <label class="full-label">備考
             <textarea id="notes" name="notes" rows="6" placeholder="送料、出張、外注加工、特殊材料、追加試作、追加修正などの別途条件を記載します。"></textarea>
@@ -197,11 +206,10 @@
         <div class="tool-actions">
           <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
           <button id="copy-summary" class="button secondary-button" type="button">内容をコピー</button>
-          <div class="edit-data-actions">
-            <button id="save-json" class="button secondary-button" type="button">編集データを保存</button>
-            <label class="button secondary-button file-button">編集データを読み込む<input id="load-json" type="file" accept="application/json,.json"></label>
-            <small>見積内容を後から再編集するためのデータです。</small>
-          </div>
+          <button id="save-json" class="button secondary-button" type="button">編集データを保存</button>
+          <button id="load-json-button" class="button secondary-button" type="button">編集データを読み込む</button>
+          <input id="load-json" class="visually-hidden" type="file" accept="application/json,.json">
+          <small class="edit-data-help">見積内容を後から再編集するためのデータです。</small>
           <button id="reset-estimate" class="text-button danger" type="button">入力をリセット</button>
           <p id="action-status" role="status" aria-live="polite"></p>
         </div>
@@ -259,6 +267,7 @@
             <div><span>納期</span><strong id="preview-delivery">別途協議</strong></div>
             <div><span>支払条件</span><strong id="preview-payment">前払い（ご入金確認後に着手）</strong></div>
             <div><span>納品形式</span><strong id="preview-output-format">別途協議</strong></div>
+            <div class="quote-payment-detail"><span>支払条件補足</span><p id="preview-payment-note">ご入金の確認後に業務へ着手いたします。</p></div>
           </section>
 
           <section class="quote-notes">
