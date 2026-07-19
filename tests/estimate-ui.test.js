@@ -30,6 +30,7 @@ assert.equal(document.querySelector('#save-json').tagName, 'BUTTON');
 assert.equal(document.querySelector('#load-json-button').tagName, 'BUTTON');
 assert.match(document.querySelector('.edit-data-help').textContent, /後から再編集/);
 assert.match(styles, /\.tool-actions \.button[\s\S]*min-height: 48px/);
+assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !important/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.line-items-table tr[\s\S]*display: grid/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-actions[\s\S]*grid-template-columns: 1fr/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet[\s\S]*aspect-ratio: 210 \/ 297/);

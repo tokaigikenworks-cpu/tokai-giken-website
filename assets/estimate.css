@@ -154,6 +154,10 @@
   margin-bottom: 18px;
 }
 
+#custom-payment-label[hidden] {
+  display: none !important;
+}
+
 .capture-zone {
   position: relative;
   display: grid !important;
