@@ -44,6 +44,7 @@
             <div class="recipient-field">
               <label>宛名<input id="client-name" name="clientName" type="text" placeholder="会社名・お名前"></label>
               <label>敬称<select id="honorific" name="honorific"><option>御中</option><option>様</option></select></label>
+              <small class="field-help recipient-help">個人名は「様」、会社・団体・部署名は「御中」を使用してください。</small>
             </div>
             <label>案件名<input id="project-name" name="projectName" type="text" placeholder="例：車両用カバー CAD再構築"></label>
             <label>見積有効期限<input id="valid-until" name="validUntil" type="date"></label>
@@ -205,7 +206,7 @@
 
         <div class="tool-actions">
           <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
-          <button id="copy-summary" class="button secondary-button" type="button">内容をコピー</button>
+          <button id="copy-summary" class="button secondary-button" type="button">見積内容をテキストでコピー</button>
           <button id="save-json" class="button secondary-button" type="button">編集データを保存</button>
           <button id="load-json-button" class="button secondary-button" type="button">編集データを読み込む</button>
           <input id="load-json" class="visually-hidden" type="file" accept="application/json,.json">

@@ -134,8 +134,20 @@
   margin-top: 7px;
 }
 
-.recipient-field > label:last-child select {
+.recipient-field > label:last-of-type select {
   border-left: 0;
+}
+
+.field-help {
+  color: #77736b;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.recipient-help {
+  grid-column: 1 / -1;
+  margin-top: 7px;
 }
 
 .full-label {
@@ -792,6 +804,14 @@
   white-space: pre-wrap;
 }
 
+.payment-note-line {
+  display: block;
+}
+
+.no-break {
+  white-space: nowrap;
+}
+
 .quote-notes {
   flex: 1 0 70px;
   margin-top: 3.5%;
@@ -888,7 +908,30 @@
   }
 
   .estimate-workspace {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 18px 3.5vw 48px;
+  }
+
+  .estimate-editor,
+  .tool-panel,
+  .tool-form-grid,
+  .tool-form-grid > *,
+  .recipient-field,
+  .recipient-field > *,
+  .capture-zone,
+  .classification-result,
+  .line-items-panel,
+  .line-items-wrap,
+  .amount-settings,
+  .tool-actions,
+  .quote-preview-column,
+  .quote-sheet {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .tool-panel {
@@ -908,6 +951,29 @@
   .tool-form-grid {
     grid-template-columns: 1fr;
     gap: 14px;
+  }
+
+  .recipient-field {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .recipient-field > label:last-of-type select {
+    border-left: 1px solid #bbb7ae;
+  }
+
+  .recipient-help {
+    margin-top: -5px;
+  }
+
+  .estimate-editor input:not([type="file"]),
+  .estimate-editor textarea,
+  .estimate-editor select,
+  .amount-settings select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .capture-zone {
@@ -934,9 +1000,81 @@
     gap: 17px;
   }
 
+  .line-items-wrap {
+    overflow: visible;
+  }
+
+  .line-items-table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .line-items-table thead {
+    display: none;
+  }
+
+  .line-items-table tbody {
+    display: grid;
+    gap: 14px;
+  }
+
+  .line-items-table tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 13px;
+    padding: 16px;
+    border: 1px solid #cbc7be;
+    background: #f8f7f3;
+  }
+
+  .line-items-table td {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    text-align: left !important;
+  }
+
+  .line-items-table td[data-label]::before {
+    content: attr(data-label);
+    color: #656158;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .line-items-table .item-description,
+  .line-items-table .item-quantity,
+  .line-items-table .item-unit,
+  .line-items-table .item-price {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .line-items-table .remove-item {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid #8b3328;
+    color: #8b3328;
+    font-size: 0;
+  }
+
+  .line-items-table .remove-item::after {
+    content: "この明細を削除";
+    font-size: 12px;
+  }
+
   .tool-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .edit-data-help {
@@ -961,6 +1099,10 @@
   }
 
   .quote-sheet {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    aspect-ratio: 210 / 297;
     box-shadow: 0 8px 22px rgba(17, 17, 17, .12);
   }
 }

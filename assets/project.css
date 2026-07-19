@@ -67,6 +67,16 @@
   overflow: hidden;
   background: #d5d2ca;
 }
+.empty-work-media {
+  background: #242424;
+}
+.work-card.is-unpublished {
+  display: none;
+}
+.work-media-industrial img,
+.work-media-electronics img {
+  object-position: center center;
+}
 .process-media {
   position: relative;
   overflow: hidden;
@@ -779,6 +789,9 @@
   }
   .works-grid {
     grid-template-columns: 1fr;
+  }
+  .work-media-electronics img {
+    object-position: 46% center;
   }
   .hero-copy {
     padding: 11vw 7vw 10vw;

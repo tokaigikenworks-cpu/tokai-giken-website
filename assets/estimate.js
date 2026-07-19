@@ -51,7 +51,7 @@
     split: {
       formLabel: '分割払い（着手金50％・残金50％）',
       quoteLabel: '着手金50％・残金50％',
-      note: '着手金のご入金確認後に業務を開始し、成果物の最終確認後に残金50％をご請求します。残金のご入金確認後に正式な最終データを納品します。'
+      note: '着手金のご入金確認後に業務を開始し、成果物の最終確認後に残金50％をご請求します。\n残金のご入金確認後、正式な最終データを納品します。'
     }
   };
 
@@ -360,12 +360,16 @@
     if (data.categoryCode) row.dataset.categoryItem = data.categoryCode;
 
     const descriptionCell = document.createElement('td');
+    descriptionCell.dataset.label = '内容';
     descriptionCell.appendChild(createInput('item-description', 'text', data.description || '', '内容'));
     const quantityCell = document.createElement('td');
+    quantityCell.dataset.label = '数量';
     quantityCell.appendChild(createInput('item-quantity', 'number', data.quantity == null ? 1 : data.quantity, '数量'));
     const unitCell = document.createElement('td');
+    unitCell.dataset.label = '単位';
     unitCell.appendChild(makeUnitSelect(data.unit || '式'));
     const priceCell = document.createElement('td');
+    priceCell.dataset.label = '単価';
     priceCell.appendChild(createInput('item-price', 'number', data.price == null ? 0 : data.price, '単価'));
     const removeCell = document.createElement('td');
     const remove = document.createElement('button');
@@ -449,6 +453,26 @@
     byId(id).textContent = value;
   }
 
+  function setPaymentNote(value) {
+    const note = byId('preview-payment-note');
+    note.replaceChildren();
+    String(value || '').split('\n').forEach(function (line, index) {
+      if (index) note.appendChild(document.createTextNode('\n'));
+      const lineElement = document.createElement('span');
+      lineElement.className = 'payment-note-line';
+      const parts = line.split('最終データ');
+      lineElement.appendChild(document.createTextNode(parts[0]));
+      if (parts.length > 1) {
+        const noBreak = document.createElement('span');
+        noBreak.className = 'no-break';
+        noBreak.textContent = '最終データ';
+        lineElement.appendChild(noBreak);
+        lineElement.appendChild(document.createTextNode(parts.slice(1).join('最終データ')));
+      }
+      note.appendChild(lineElement);
+    });
+  }
+
   function updatePreview() {
     const data = readData();
     const totals = calculateTotals(data.items, data.taxRate);
@@ -467,7 +491,7 @@
     setText('preview-valid-until', formatDate(data.validUntil));
     setText('preview-delivery', data.delivery || '別途協議');
     setText('preview-payment', data.payment || DEFAULT_PAYMENT);
-    setText('preview-payment-note', data.paymentNote || PAYMENT_TERMS.prepaid.note);
+    setPaymentNote(data.paymentNote || PAYMENT_TERMS.prepaid.note);
     setText('preview-output-format', data.outputFormat || '別途協議');
     setText('preview-notes', data.notes || DEFAULT_NOTES);
 
