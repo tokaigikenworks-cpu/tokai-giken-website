@@ -939,7 +939,7 @@
   }
 
   .tool-panel {
-    padding: 21px 18px 23px;
+    padding: 21px clamp(16px, 5.625vw, 20px) 23px;
   }
 
   .panel-heading {
@@ -970,6 +970,8 @@
     margin-top: -5px;
   }
 
+  .tool-panel label,
+  .recipient-field label,
   .estimate-editor input:not([type="file"]),
   .estimate-editor textarea,
   .estimate-editor select,
@@ -978,6 +980,18 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+  }
+
+  .estimate-editor input[type="date"] {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    -webkit-min-logical-width: 0;
+  }
+
+  .estimate-editor input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
   }
 
   .capture-zone {
@@ -1106,8 +1120,35 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    height: auto;
     aspect-ratio: 210 / 297;
     box-shadow: 0 8px 22px rgba(17, 17, 17, .12);
+  }
+
+  .quote-sheet > * {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .quote-notes {
+    min-height: 0;
+    flex: 1 1 0;
+  }
+
+  .quote-sheet .quote-footer {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    margin: auto 0 0;
+    padding: 2% 2% 1.5%;
+  }
+
+  .quote-footer > div,
+  .quote-footer > p {
+    max-width: 100%;
+    min-width: 0;
   }
 }
 
