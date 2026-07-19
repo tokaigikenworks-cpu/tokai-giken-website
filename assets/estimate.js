@@ -162,6 +162,21 @@
     return parts[0] + '/' + parts[1] + '/' + parts[2];
   }
 
+  function formatQuoteDate(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      const offset = value.getTimezoneOffset();
+      return new Date(value.getTime() - offset * 60000).toISOString().slice(0, 10).replaceAll('-', '');
+    }
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? match[1] + match[2] + match[3] : '';
+  }
+
+  function makeQuoteNumber(issueDate, sequence) {
+    const datePart = formatQuoteDate(issueDate);
+    const number = Math.max(1, Math.floor(Number(sequence) || 1));
+    return datePart ? datePart + '_' + number : '';
+  }
+
   function buildSummary(data) {
     const items = Array.isArray(data.items) ? data.items : [];
     const totals = calculateTotals(items, data.taxRate);
@@ -209,6 +224,8 @@
     calculateTotals,
     formatYen,
     formatDate,
+    formatQuoteDate,
+    makeQuoteNumber,
     buildSummary,
     inferPurpose
   };
@@ -248,14 +265,93 @@
   let itemSequence = 0;
   let previewObjectUrls = [];
   let paymentManuallyChanged = false;
+  let quoteNumberIsAutomatic = true;
+  let issuedQuoteNumber = '';
+
+  const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
   function toLocalISODate(date) {
     const offset = date.getTimezoneOffset();
     return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10);
   }
 
-  function makeQuoteNumber(date) {
-    return 'TKG-EST-' + toLocalISODate(date).replaceAll('-', '') + '-01';
+  function sequenceStorageKey(issueDate) {
+    const datePart = formatQuoteDate(issueDate);
+    return datePart ? SEQUENCE_STORAGE_PREFIX + datePart : '';
+  }
+
+  function getLastIssuedSequence(issueDate) {
+    const key = sequenceStorageKey(issueDate);
+    if (!key) return 0;
+    try {
+      const value = Number(window.localStorage.getItem(key));
+      return Number.isInteger(value) && value > 0 ? value : 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  function setLastIssuedSequence(issueDate, sequence) {
+    const key = sequenceStorageKey(issueDate);
+    if (!key) return;
+    try {
+      window.localStorage.setItem(key, String(sequence));
+    } catch (error) {
+      // Storage may be unavailable in private browsing. Printing must remain usable.
+    }
+  }
+
+  function refreshAutomaticQuoteNumber() {
+    if (!quoteNumberIsAutomatic) return;
+    fields.quoteNumber.value = makeQuoteNumber(fields.issueDate.value, getLastIssuedSequence(fields.issueDate.value) + 1);
+  }
+
+  function finalizeQuoteNumber() {
+    if (issuedQuoteNumber && fields.quoteNumber.value.trim() === issuedQuoteNumber) return issuedQuoteNumber;
+
+    if (quoteNumberIsAutomatic) refreshAutomaticQuoteNumber();
+    let quoteNumber = fields.quoteNumber.value.trim();
+    if (!quoteNumber) {
+      quoteNumberIsAutomatic = true;
+      refreshAutomaticQuoteNumber();
+      quoteNumber = fields.quoteNumber.value.trim();
+    }
+
+    const datePart = formatQuoteDate(fields.issueDate.value);
+    const match = quoteNumber.match(/^(\d{8})_(\d+)$/);
+    if (match && match[1] === datePart) {
+      const sequence = Number(match[2]);
+      if (sequence > getLastIssuedSequence(fields.issueDate.value)) {
+        setLastIssuedSequence(fields.issueDate.value, sequence);
+      }
+    }
+    issuedQuoteNumber = quoteNumber;
+    updatePreview();
+    return quoteNumber;
+  }
+
+  function printEstimate() {
+    const quoteNumber = finalizeQuoteNumber();
+    const originalTitle = document.title;
+    let restored = false;
+    const restoreTitle = function () {
+      if (restored) return;
+      restored = true;
+      window.removeEventListener('afterprint', restoreTitle);
+      document.title = originalTitle;
+    };
+    const openPrintDialog = function () {
+      window.addEventListener('afterprint', restoreTitle, { once: true });
+      window.print();
+      restoreTitle();
+    };
+
+    document.title = quoteNumber || '見積書';
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(openPrintDialog);
+    } else {
+      openPrintDialog();
+    }
   }
 
   function setInitialValues() {
@@ -264,7 +360,9 @@
     valid.setDate(valid.getDate() + 30);
     fields.issueDate.value = toLocalISODate(today);
     fields.validUntil.value = toLocalISODate(valid);
-    fields.quoteNumber.value = makeQuoteNumber(today);
+    quoteNumberIsAutomatic = true;
+    issuedQuoteNumber = '';
+    refreshAutomaticQuoteNumber();
   }
 
   function currentClassificationInput() {
@@ -604,12 +702,15 @@
   function loadData(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) throw new Error('見積データの形式が正しくありません。');
     const paymentType = data.paymentType || inferPaymentType(data.payment);
+    quoteNumberIsAutomatic = !String(data.quoteNumber || '').trim();
+    issuedQuoteNumber = '';
     Object.keys(fields).forEach(function (key) {
       if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') setFieldValue(key, data[key]);
     });
     setFieldValue('taxRate', data.taxRate == null ? 10 : data.taxRate);
     fields.paymentType.value = paymentType;
     fields.customPayment.value = data.customPayment || (paymentType === 'custom' ? data.payment || '' : '');
+    if (quoteNumberIsAutomatic) refreshAutomaticQuoteNumber();
     paymentManuallyChanged = true;
     updatePaymentFields();
     itemContainer.replaceChildren();
@@ -635,11 +736,23 @@
   }
 
   form.addEventListener('input', function (event) {
+    if (event.target === fields.quoteNumber) {
+      quoteNumberIsAutomatic = false;
+      issuedQuoteNumber = '';
+    }
+    if (event.target === fields.issueDate) {
+      issuedQuoteNumber = '';
+      refreshAutomaticQuoteNumber();
+    }
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
   });
   form.addEventListener('change', function (event) {
+    if (event.target === fields.issueDate) {
+      issuedQuoteNumber = '';
+      refreshAutomaticQuoteNumber();
+    }
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
@@ -647,7 +760,7 @@
   form.addEventListener('submit', function (event) {
     event.preventDefault();
     updatePreview();
-    window.print();
+    printEstimate();
   });
   itemContainer.addEventListener('click', function (event) {
     const button = event.target.closest('.remove-item');
