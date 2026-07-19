@@ -20,6 +20,9 @@ assert.equal(engine.recommendPaymentType({ code: 'D' }), 'split');
 assert.equal(engine.getPaymentDetails('split').quoteLabel, '着手金50％・残金50％');
 assert.match(engine.getPaymentDetails('split').note, /成果物の最終確認後に残金50％をご請求/);
 assert.equal(engine.getPaymentDetails('split').note, '着手金のご入金確認後に業務を開始し、成果物の最終確認後に残金50％をご請求します。\n残金のご入金確認後、正式な最終データを納品します。');
+assert.equal(engine.formatQuoteDate('2026-07-19'), '20260719');
+assert.equal(engine.makeQuoteNumber('2026-07-19', 1), '20260719_1');
+assert.equal(engine.makeQuoteNumber('2026-07-19', 3), '20260719_3');
 
 const fittingResult = engine.classifyCase({
   purpose: 'reproduce',
