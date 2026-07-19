@@ -12,12 +12,27 @@ const styles = fs.readFileSync(path.join(root, 'assets/estimate.css'), 'utf8');
 const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/estimate.html' });
 
 let printCalls = 0;
-dom.window.print = () => { printCalls += 1; };
+const printTitles = [];
+dom.window.print = () => {
+  printCalls += 1;
+  printTitles.push(dom.window.document.title);
+};
 dom.window.confirm = () => true;
+dom.window.URL.createObjectURL = () => 'blob:estimate-test';
+dom.window.URL.revokeObjectURL = () => {};
+class TestFileReader {
+  addEventListener(type, listener) { this[type] = listener; }
+  readAsText(file) {
+    this.result = file.contents;
+    this.load();
+  }
+}
+dom.window.FileReader = TestFileReader;
 dom.window.eval(script);
 
 const document = dom.window.document;
 const change = new dom.window.Event('change', { bubbles: true });
+const input = new dom.window.Event('input', { bubbles: true });
 assert.equal(document.querySelector('.estimate-hero h1').textContent.trim(), 'トカイ技研の見積ツール');
 assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
 assert.equal(document.querySelector('#payment-type').value, 'prepaid');
@@ -93,8 +108,51 @@ document.querySelector('#purpose').dispatchEvent(change);
 assert.equal(document.querySelector('#category-code').textContent, 'A');
 assert.equal(document.querySelector('#payment-type').value, 'custom');
 
+const issueDate = document.querySelector('#issue-date');
+const quoteNumber = document.querySelector('#quote-number');
+issueDate.value = '2026-07-19';
+issueDate.dispatchEvent(input);
+assert.equal(quoteNumber.value, '20260719_1');
+assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), null);
+
+const originalTitle = document.title;
 document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
 assert.equal(printCalls, 1);
+assert.equal(printTitles[0], '20260719_1');
+assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), '1');
+assert.equal(document.title, originalTitle);
+document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+assert.equal(printCalls, 2);
+assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), '1');
+
+let jsonDownloadName = '';
+dom.window.HTMLAnchorElement.prototype.click = function () { jsonDownloadName = this.download; };
+document.querySelector('#save-json').click();
+assert.equal(jsonDownloadName, '20260719_1.json');
+
+document.querySelector('#reset-estimate').click();
+issueDate.value = '2026-07-19';
+issueDate.dispatchEvent(input);
+assert.equal(quoteNumber.value, '20260719_2');
+assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), '1');
+issueDate.value = '2026-07-20';
+issueDate.dispatchEvent(input);
+assert.equal(quoteNumber.value, '20260720_1');
+
+const loadInput = document.querySelector('#load-json');
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
+  value: [{ contents: JSON.stringify({
+    quoteNumber: '20260718_7',
+    issueDate: '2026-07-18',
+    items: []
+  }) }]
+});
+loadInput.dispatchEvent(change);
+assert.equal(quoteNumber.value, '20260718_7');
+issueDate.value = '2026-07-20';
+issueDate.dispatchEvent(change);
+assert.equal(quoteNumber.value, '20260718_7');
 
 document.querySelector('#purpose').value = 'sell';
 document.querySelector('#deliverable').value = 'support';
