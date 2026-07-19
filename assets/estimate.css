@@ -957,6 +957,11 @@
     gap: 14px;
   }
 
+  .tool-form-grid > label {
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .recipient-field {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -982,14 +987,21 @@
     box-sizing: border-box;
   }
 
-  .estimate-editor input[type="date"] {
+  .tool-panel input[type="date"] {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     inline-size: 100%;
     max-inline-size: 100%;
     min-inline-size: 0;
     -webkit-min-logical-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
   }
 
-  .estimate-editor input[type="date"]::-webkit-date-and-time-value {
+  .tool-panel input[type="date"]::-webkit-date-and-time-value {
     min-width: 0;
     text-align: left;
   }
