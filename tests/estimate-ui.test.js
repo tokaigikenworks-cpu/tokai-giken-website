@@ -34,6 +34,9 @@ assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !impor
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.line-items-table tr[\s\S]*display: grid/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-actions[\s\S]*grid-template-columns: 1fr/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet[\s\S]*aspect-ratio: 210 \/ 297/);
+assert.match(styles, /@media \(max-width: 740px\)[\s\S]*input\[type="date"\][\s\S]*min-inline-size: 0/);
+assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet \.quote-footer[\s\S]*width: 100%[\s\S]*margin: auto 0 0/);
+assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-notes[\s\S]*flex: 1 1 0/);
 assert.match(styles, /@media print[\s\S]*\.quote-sheet[\s\S]*width: 210mm/);
 assert.doesNotMatch(styles, /overflow-x:\s*hidden/);
 assert.match(script, /outputFormat: fields\.outputFormat\.value\.trim\(\)/);
