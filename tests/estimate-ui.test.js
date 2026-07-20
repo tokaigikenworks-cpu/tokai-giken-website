@@ -13,6 +13,7 @@ const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.
 
 let printCalls = 0;
 const printTitles = [];
+let apiRequest = null;
 dom.window.print = () => {
   printCalls += 1;
   printTitles.push(dom.window.document.title);
@@ -20,6 +21,28 @@ dom.window.print = () => {
 dom.window.confirm = () => true;
 dom.window.URL.createObjectURL = () => 'blob:estimate-test';
 dom.window.URL.revokeObjectURL = () => {};
+dom.window.fetch = async (url, options) => {
+  apiRequest = { url, options };
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      ok: true,
+      mode: 'dummy',
+      classification: {
+        category: {
+          code: 'D',
+          label: '設計・試作支援',
+          price: 200000,
+          auto: true,
+          reason: 'ダミーAPIから返した判定理由です。'
+        },
+        warnings: ['ダミーAPI応答です。'],
+        inferredPurpose: 'vehicle'
+      }
+    })
+  };
+};
 class TestFileReader {
   addEventListener(type, listener) { this[type] = listener; }
   readAsText(file) {
@@ -43,6 +66,8 @@ assert.equal(document.querySelector('#copy-summary').textContent.trim(), '見積
 assert.equal(document.querySelector('#save-json').textContent.trim(), '編集データを保存');
 assert.equal(document.querySelector('#save-json').tagName, 'BUTTON');
 assert.equal(document.querySelector('#load-json-button').tagName, 'BUTTON');
+assert.equal(document.querySelector('#classify-with-api').textContent.trim(), 'ダミーAPIで判定をテスト');
+assert.match(document.querySelector('#api-classification-status').textContent, /実APIへの送信はまだ行いません/);
 assert.match(document.querySelector('.edit-data-help').textContent, /後から再編集/);
 assert.match(styles, /\.tool-actions \.button[\s\S]*min-height: 48px/);
 assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !important/);
@@ -160,4 +185,29 @@ document.querySelector('#purpose').dispatchEvent(change);
 assert.equal(document.querySelector('#category-code').textContent, 'E');
 assert.equal(document.querySelector('#apply-category').disabled, true);
 
-console.log('estimate-ui: all tests passed');
+async function testApiIntegration() {
+  document.querySelector('#inquiry-text').value = '車両用ブラケットを設計したい';
+  document.querySelector('#classify-with-api').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(apiRequest.url, '/api/estimate');
+  assert.equal(apiRequest.options.method, 'POST');
+  const sent = JSON.parse(apiRequest.options.body);
+  assert.equal(sent.inquiryText, '車両用ブラケットを設計したい');
+  assert.equal(sent.purpose, 'sell');
+  assert.equal(document.querySelector('#category-code').textContent, 'D');
+  assert.match(document.querySelector('#category-reason').textContent, /ダミーAPIから返した/);
+  assert.equal(document.querySelector('#api-classification-status').dataset.state, 'success');
+  assert.match(document.querySelector('#api-classification-status').textContent, /通信テスト成功/);
+  assert.equal(document.querySelector('#classify-with-api').disabled, false);
+
+  document.querySelector('#inquiry-text').dispatchEvent(input);
+  assert.equal(document.querySelector('#category-code').textContent, 'E');
+  assert.match(document.querySelector('#api-classification-status').textContent, /再判定/);
+}
+
+testApiIntegration()
+  .then(() => console.log('estimate-ui: all tests passed'))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

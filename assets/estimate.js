@@ -260,6 +260,15 @@
     outputFormat: byId('output-format'),
     notes: byId('notes')
   };
+  const classificationFields = [
+    fields.inquiryText,
+    fields.purpose,
+    fields.sourceType,
+    fields.fitting,
+    fields.deliverable,
+    fields.safety,
+    fields.rush
+  ];
 
   const itemContainer = byId('line-items');
   let itemSequence = 0;
@@ -267,6 +276,7 @@
   let paymentManuallyChanged = false;
   let quoteNumberIsAutomatic = true;
   let issuedQuoteNumber = '';
+  let apiClassificationResult = null;
 
   const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
@@ -377,6 +387,63 @@
     };
   }
 
+  function setApiClassificationStatus(message, state) {
+    const status = byId('api-classification-status');
+    status.textContent = message;
+    if (state) status.dataset.state = state;
+    else delete status.dataset.state;
+  }
+
+  function clearApiClassification() {
+    if (!apiClassificationResult) return;
+    apiClassificationResult = null;
+    setApiClassificationStatus('入力内容が変更されました。必要に応じてダミーAPIで再判定してください。');
+  }
+
+  function normalizeApiClassification(response) {
+    const classification = response && response.classification;
+    const code = classification && classification.category && classification.category.code;
+    const localCategory = CATEGORIES[code];
+    if (!localCategory) throw new Error('APIの判定結果を読み取れませんでした。');
+    return {
+      category: {
+        code: localCategory.code,
+        label: classification.category.label || localCategory.label,
+        price: normalizeNumber(classification.category.price) || localCategory.price,
+        auto: classification.category.auto !== false && localCategory.auto,
+        reason: classification.category.reason || localCategory.reason
+      },
+      warnings: Array.isArray(classification.warnings) ? classification.warnings.map(String) : [],
+      inferredPurpose: classification.inferredPurpose || ''
+    };
+  }
+
+  async function classifyWithApi() {
+    const button = byId('classify-with-api');
+    button.disabled = true;
+    button.textContent = 'APIへ送信中…';
+    setApiClassificationStatus('問い合わせ文と選択条件をダミーAPIへ送信しています。', 'loading');
+    try {
+      const response = await fetch('/api/estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentClassificationInput())
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(data.error || 'API通信に失敗しました（HTTP ' + response.status + '）。');
+      apiClassificationResult = normalizeApiClassification(data);
+      updateClassification();
+      setApiClassificationStatus('ダミーAPIの応答を反映しました。通信テスト成功です。', 'success');
+    } catch (error) {
+      apiClassificationResult = null;
+      updateClassification();
+      setApiClassificationStatus(error.message || 'APIへ接続できませんでした。', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'ダミーAPIで判定をテスト';
+    }
+  }
+
   function updatePaymentFields() {
     const isCustom = fields.paymentType.value === 'custom';
     byId('custom-payment-label').hidden = !isCustom;
@@ -391,7 +458,7 @@
   }
 
   function updateClassification() {
-    const result = classifyCase(currentClassificationInput());
+    const result = apiClassificationResult || classifyCase(currentClassificationInput());
     const code = byId('category-code');
     const label = byId('category-label');
     const reason = byId('category-reason');
@@ -704,6 +771,7 @@
     const paymentType = data.paymentType || inferPaymentType(data.payment);
     quoteNumberIsAutomatic = !String(data.quoteNumber || '').trim();
     issuedQuoteNumber = '';
+    apiClassificationResult = null;
     Object.keys(fields).forEach(function (key) {
       if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') setFieldValue(key, data[key]);
     });
@@ -724,6 +792,8 @@
     form.reset();
     itemContainer.replaceChildren();
     clearImagePreviews();
+    apiClassificationResult = null;
+    setApiClassificationStatus('現在は通信確認用のダミーAPIです。実APIへの送信はまだ行いません。');
     setInitialValues();
     paymentManuallyChanged = false;
     fields.paymentType.value = 'prepaid';
@@ -744,6 +814,7 @@
       issuedQuoteNumber = '';
       refreshAutomaticQuoteNumber();
     }
+    if (classificationFields.includes(event.target)) clearApiClassification();
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
@@ -753,6 +824,7 @@
       issuedQuoteNumber = '';
       refreshAutomaticQuoteNumber();
     }
+    if (classificationFields.includes(event.target)) clearApiClassification();
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
@@ -770,6 +842,7 @@
   });
   byId('add-item').addEventListener('click', function () { addLineItem(); });
   byId('apply-category').addEventListener('click', applyCategory);
+  byId('classify-with-api').addEventListener('click', classifyWithApi);
   byId('source-images').addEventListener('change', function (event) { showImages(event.target.files); });
   byId('capture-zone').addEventListener('paste', function (event) {
     const files = Array.from(event.clipboardData.files || []);

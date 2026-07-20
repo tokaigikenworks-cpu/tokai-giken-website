@@ -240,6 +240,46 @@
   color: #f4f3ef;
 }
 
+.api-classification-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0 12px;
+}
+
+.api-test-button {
+  min-height: 44px;
+  flex: 0 0 auto;
+  border-color: var(--orange);
+  background: transparent;
+  color: var(--orange);
+}
+
+.api-test-button:hover:not(:disabled) {
+  background: var(--orange);
+  color: #fff;
+}
+
+.api-test-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+#api-classification-status {
+  margin: 0;
+  color: #656158;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+#api-classification-status[data-state="success"] {
+  color: #356b50;
+}
+
+#api-classification-status[data-state="error"] {
+  color: #a13d2d;
+}
+
 .classification-intro {
   margin: 0;
   color: #656158;
@@ -1023,6 +1063,16 @@
 
   .classification-result {
     padding: 18px;
+  }
+
+  .api-classification-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-test-button {
+    width: 100%;
+    max-width: 100%;
   }
 
   .amount-settings {
