@@ -28,17 +28,24 @@ dom.window.fetch = async (url, options) => {
     status: 200,
     json: async () => ({
       ok: true,
-      mode: 'dummy',
+      mode: 'openai',
       classification: {
         category: {
           code: 'D',
-          label: '設計・試作支援',
-          price: 200000,
-          auto: true,
-          reason: 'ダミーAPIから返した判定理由です。'
+          label: 'AIが変更してはいけない名称',
+          price: 1,
+          auto: false,
+          reason: 'モックAPIから返した判定理由です。'
         },
-        warnings: ['ダミーAPI応答です。'],
+        confidence: 0.91,
+        warnings: ['モックAPI応答です。'],
         inferredPurpose: 'vehicle'
+      },
+      meta: {
+        durationMs: 840,
+        model: 'gpt-5.6-luna',
+        redactionCount: 1,
+        usage: { total_tokens: 160 }
       }
     })
   };
@@ -66,8 +73,9 @@ assert.equal(document.querySelector('#copy-summary').textContent.trim(), '見積
 assert.equal(document.querySelector('#save-json').textContent.trim(), '編集データを保存');
 assert.equal(document.querySelector('#save-json').tagName, 'BUTTON');
 assert.equal(document.querySelector('#load-json-button').tagName, 'BUTTON');
-assert.equal(document.querySelector('#classify-with-api').textContent.trim(), 'ダミーAPIで判定をテスト');
-assert.match(document.querySelector('#api-classification-status').textContent, /実APIへの送信はまだ行いません/);
+assert.equal(document.querySelector('#classify-with-api').textContent.trim(), 'API判定を実行');
+assert.match(document.querySelector('#api-classification-status').textContent, /自動反映されません/);
+assert.equal(document.querySelector('#classification-comparison').hidden, true);
 assert.match(document.querySelector('.edit-data-help').textContent, /後から再編集/);
 assert.match(styles, /\.tool-actions \.button[\s\S]*min-height: 48px/);
 assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !important/);
@@ -187,6 +195,7 @@ assert.equal(document.querySelector('#apply-category').disabled, true);
 
 async function testApiIntegration() {
   document.querySelector('#inquiry-text').value = '車両用ブラケットを設計したい';
+  document.querySelector('#payment-type').value = 'prepaid';
   document.querySelector('#classify-with-api').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(apiRequest.url, '/api/estimate');
@@ -194,15 +203,53 @@ async function testApiIntegration() {
   const sent = JSON.parse(apiRequest.options.body);
   assert.equal(sent.inquiryText, '車両用ブラケットを設計したい');
   assert.equal(sent.purpose, 'sell');
-  assert.equal(document.querySelector('#category-code').textContent, 'D');
-  assert.match(document.querySelector('#category-reason').textContent, /ダミーAPIから返した/);
+  assert.equal('clientName' in sent, false);
+  assert.equal('quoteNumber' in sent, false);
+  assert.equal(document.querySelector('#category-code').textContent, 'E');
+  assert.equal(document.querySelector('#comparison-local-code').textContent, 'E');
+  assert.equal(document.querySelector('#comparison-api-code').textContent, 'D');
+  assert.equal(document.querySelector('#comparison-match').textContent, '不一致');
+  assert.match(document.querySelector('#comparison-api-reason').textContent, /モックAPIから返した/);
+  assert.match(document.querySelector('#comparison-api-warnings').textContent, /モックAPI応答/);
+  assert.doesNotMatch(document.querySelector('#category-reason').textContent, /モックAPIから返した/);
+  assert.equal(document.querySelector('#classification-comparison').hidden, false);
+  assert.equal(document.querySelector('#adopt-api-classification').disabled, false);
+  assert.match(document.querySelector('#comparison-meta').textContent, /確信度: 91%/);
+  assert.match(document.querySelector('#comparison-meta').textContent, /tokens: 160/);
+  assert.match(document.querySelector('#comparison-meta').textContent, /削除: 1件/);
   assert.equal(document.querySelector('#api-classification-status').dataset.state, 'success');
-  assert.match(document.querySelector('#api-classification-status').textContent, /通信テスト成功/);
+  assert.match(document.querySelector('#api-classification-status').textContent, /比較後/);
   assert.equal(document.querySelector('#classify-with-api').disabled, false);
+
+  document.querySelector('#adopt-api-classification').click();
+  assert.equal(document.querySelector('#category-code').textContent, 'D');
+  assert.equal(document.querySelector('#category-label').textContent, '設計・試作支援 / ¥200,000〜');
+  assert.match(document.querySelector('#category-reason').textContent, /モックAPIから返した/);
+  assert.equal(document.querySelector('#payment-type').value, 'prepaid');
+  assert.equal(document.querySelector('#adopt-api-classification').disabled, true);
 
   document.querySelector('#inquiry-text').dispatchEvent(input);
   assert.equal(document.querySelector('#category-code').textContent, 'E');
-  assert.match(document.querySelector('#api-classification-status').textContent, /再判定/);
+  assert.equal(document.querySelector('#classification-comparison').hidden, true);
+  assert.match(document.querySelector('#api-classification-status').textContent, /もう一度/);
+
+  dom.window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      ok: true,
+      mode: 'local-fallback',
+      classification: {},
+      meta: { fallbackReason: 'rate_limit' }
+    })
+  });
+  document.querySelector('#classify-with-api').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#comparison-match').textContent, 'ローカルへフォールバック');
+  assert.equal(document.querySelector('#comparison-match').dataset.state, 'fallback');
+  assert.equal(document.querySelector('#adopt-api-classification').disabled, true);
+  assert.equal(document.querySelector('#category-code').textContent, 'E');
+  assert.match(document.querySelector('#comparison-meta').textContent, /rate_limit/);
 }
 
 testApiIntegration()

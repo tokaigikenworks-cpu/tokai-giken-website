@@ -276,7 +276,8 @@
   let paymentManuallyChanged = false;
   let quoteNumberIsAutomatic = true;
   let issuedQuoteNumber = '';
-  let apiClassificationResult = null;
+  let pendingApiClassificationResult = null;
+  let adoptedApiClassificationResult = null;
 
   const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
@@ -395,9 +396,16 @@
   }
 
   function clearApiClassification() {
-    if (!apiClassificationResult) return;
-    apiClassificationResult = null;
-    setApiClassificationStatus('入力内容が変更されました。必要に応じてダミーAPIで再判定してください。');
+    const comparison = byId('classification-comparison');
+    const hadApiResult = pendingApiClassificationResult || adoptedApiClassificationResult || !comparison.hidden;
+    pendingApiClassificationResult = null;
+    adoptedApiClassificationResult = null;
+    comparison.hidden = true;
+    byId('adopt-api-classification').disabled = true;
+    byId('adopt-api-classification').textContent = 'API判定を採用する';
+    if (hadApiResult) {
+      setApiClassificationStatus('入力内容が変更されました。API判定をもう一度実行してください。');
+    }
   }
 
   function normalizeApiClassification(response) {
@@ -408,39 +416,107 @@
     return {
       category: {
         code: localCategory.code,
-        label: classification.category.label || localCategory.label,
-        price: normalizeNumber(classification.category.price) || localCategory.price,
-        auto: classification.category.auto !== false && localCategory.auto,
+        label: localCategory.label,
+        price: localCategory.price,
+        auto: localCategory.auto,
         reason: classification.category.reason || localCategory.reason
       },
+      confidence: Math.min(1, Math.max(0, Number(classification.confidence) || 0)),
       warnings: Array.isArray(classification.warnings) ? classification.warnings.map(String) : [],
       inferredPurpose: classification.inferredPurpose || ''
     };
   }
 
+  function renderClassificationComparison(localResult, apiResult, response) {
+    const comparison = byId('classification-comparison');
+    const localCode = localResult.category ? localResult.category.code : '—';
+    const apiCode = apiResult.category ? apiResult.category.code : '—';
+    const match = byId('comparison-match');
+    const adoptButton = byId('adopt-api-classification');
+    const meta = response.meta || {};
+    comparison.hidden = false;
+    setText('comparison-local-code', localCode);
+    setText('comparison-api-code', apiCode);
+    setText('comparison-local-reason', localResult.category ? localResult.category.reason : '判定条件が不足しています。');
+    setText('comparison-api-reason', apiResult.category ? apiResult.category.reason : '判定結果がありません。');
+    const apiWarnings = byId('comparison-api-warnings');
+    apiWarnings.replaceChildren();
+    const warnings = Array.isArray(apiResult.warnings) && apiResult.warnings.length ? apiResult.warnings : ['警告・確認事項なし'];
+    warnings.forEach(function (warning) {
+      const item = document.createElement('li');
+      item.textContent = warning;
+      apiWarnings.appendChild(item);
+    });
+
+    if (response.mode === 'openai') {
+      const isMatch = localCode === apiCode;
+      match.textContent = isMatch ? '一致' : '不一致';
+      match.dataset.state = isMatch ? 'match' : 'mismatch';
+      adoptButton.disabled = false;
+      adoptButton.textContent = 'API判定を採用する';
+      const confidence = Math.round((apiResult.confidence || 0) * 100);
+      const totalTokens = meta.usage && meta.usage.total_tokens ? ' / tokens: ' + meta.usage.total_tokens : '';
+      const redactions = meta.redactionCount ? ' / 個人情報候補の削除: ' + meta.redactionCount + '件' : '';
+      byId('comparison-meta').textContent = 'mode: openai / 確信度: ' + confidence + '% / ' + (meta.durationMs || 0) + 'ms / ' + (meta.model || 'model未取得') + totalTokens + redactions;
+      return;
+    }
+
+    match.textContent = 'ローカルへフォールバック';
+    match.dataset.state = 'fallback';
+    adoptButton.disabled = true;
+    adoptButton.textContent = 'API判定は採用できません';
+    byId('comparison-meta').textContent = 'mode: local-fallback / 理由: ' + (meta.fallbackReason || '通信失敗');
+  }
+
+  function adoptApiClassification() {
+    if (!pendingApiClassificationResult) return;
+    adoptedApiClassificationResult = pendingApiClassificationResult;
+    updateClassification();
+    const button = byId('adopt-api-classification');
+    button.disabled = true;
+    button.textContent = 'API判定を採用済み';
+    setApiClassificationStatus('API判定を採用しました。金額・支払条件・明細は既存ロジックのままです。', 'success');
+  }
+
   async function classifyWithApi() {
     const button = byId('classify-with-api');
+    const localResult = classifyCase(currentClassificationInput());
+    const controller = new AbortController();
+    const timeout = window.setTimeout(function () { controller.abort(); }, 12000);
+    clearApiClassification();
+    updateClassification();
     button.disabled = true;
     button.textContent = 'APIへ送信中…';
-    setApiClassificationStatus('問い合わせ文と選択条件をダミーAPIへ送信しています。', 'loading');
+    setApiClassificationStatus('問い合わせ文と選択条件をPreview環境のAPIへ送信しています。', 'loading');
     try {
       const response = await fetch('/api/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentClassificationInput())
+        body: JSON.stringify(currentClassificationInput()),
+        signal: controller.signal
       });
       const data = await response.json().catch(function () { return {}; });
       if (!response.ok) throw new Error(data.error || 'API通信に失敗しました（HTTP ' + response.status + '）。');
-      apiClassificationResult = normalizeApiClassification(data);
-      updateClassification();
-      setApiClassificationStatus('ダミーAPIの応答を反映しました。通信テスト成功です。', 'success');
+      if (data.mode === 'openai') {
+        const apiResult = normalizeApiClassification(data);
+        pendingApiClassificationResult = apiResult;
+        renderClassificationComparison(localResult, apiResult, data);
+        setApiClassificationStatus('API判定を取得しました。比較後、必要な場合だけ採用してください。', 'success');
+      } else {
+        renderClassificationComparison(localResult, localResult, data);
+        setApiClassificationStatus('OpenAI APIを使用できなかったため、ローカル判定で継続しています。', 'error');
+      }
     } catch (error) {
-      apiClassificationResult = null;
-      updateClassification();
-      setApiClassificationStatus(error.message || 'APIへ接続できませんでした。', 'error');
+      const fallbackResponse = {
+        mode: 'local-fallback',
+        meta: { fallbackReason: error && error.name === 'AbortError' ? 'client_timeout' : 'network_error' }
+      };
+      renderClassificationComparison(localResult, localResult, fallbackResponse);
+      setApiClassificationStatus('APIへ接続できなかったため、ローカル判定で見積作成を継続できます。', 'error');
     } finally {
+      window.clearTimeout(timeout);
       button.disabled = false;
-      button.textContent = 'ダミーAPIで判定をテスト';
+      button.textContent = 'API判定を実行';
     }
   }
 
@@ -458,7 +534,8 @@
   }
 
   function updateClassification() {
-    const result = apiClassificationResult || classifyCase(currentClassificationInput());
+    const localResult = classifyCase(currentClassificationInput());
+    const result = adoptedApiClassificationResult || localResult;
     const code = byId('category-code');
     const label = byId('category-label');
     const reason = byId('category-reason');
@@ -472,7 +549,7 @@
       reason.textContent = '判定後、推奨作業を見積明細へ追加できます。';
       applyButton.disabled = true;
       applyButton.textContent = '推奨作業を見積明細へ追加';
-      syncPaymentWithClassification(result);
+      syncPaymentWithClassification(localResult);
       return result;
     }
 
@@ -486,7 +563,7 @@
     });
     applyButton.disabled = !result.category.auto;
     applyButton.textContent = result.category.auto ? '推奨作業を見積明細へ追加' : '個別見積：範囲確認が必要';
-    syncPaymentWithClassification(result);
+    syncPaymentWithClassification(localResult);
     return result;
   }
 
@@ -771,7 +848,7 @@
     const paymentType = data.paymentType || inferPaymentType(data.payment);
     quoteNumberIsAutomatic = !String(data.quoteNumber || '').trim();
     issuedQuoteNumber = '';
-    apiClassificationResult = null;
+    clearApiClassification();
     Object.keys(fields).forEach(function (key) {
       if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') setFieldValue(key, data[key]);
     });
@@ -792,8 +869,8 @@
     form.reset();
     itemContainer.replaceChildren();
     clearImagePreviews();
-    apiClassificationResult = null;
-    setApiClassificationStatus('現在は通信確認用のダミーAPIです。実APIへの送信はまだ行いません。');
+    clearApiClassification();
+    setApiClassificationStatus('ローカル判定とPreview環境のAPI判定を比較します。API結果は自動反映されません。');
     setInitialValues();
     paymentManuallyChanged = false;
     fields.paymentType.value = 'prepaid';
@@ -843,6 +920,7 @@
   byId('add-item').addEventListener('click', function () { addLineItem(); });
   byId('apply-category').addEventListener('click', applyCategory);
   byId('classify-with-api').addEventListener('click', classifyWithApi);
+  byId('adopt-api-classification').addEventListener('click', adoptApiClassification);
   byId('source-images').addEventListener('change', function (event) { showImages(event.target.files); });
   byId('capture-zone').addEventListener('paste', function (event) {
     const files = Array.from(event.clipboardData.files || []);
