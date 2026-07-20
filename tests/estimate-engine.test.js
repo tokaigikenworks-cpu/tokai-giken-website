@@ -39,9 +39,16 @@ assert.ok(fittingResult.warnings.some((warning) => warning.includes('嵌合相�
 
 const totals = engine.calculateTotals([
   { quantity: 1, price: 60000 },
-  { quantity: 2, price: 5000 }
+  { quantity: 2, price: 5000 },
+  { description: '   ', quantity: 1, unit: '式', price: 0 }
 ], 10);
 assert.deepEqual(totals, { subtotal: 70000, tax: 7000, total: 77000 });
+assert.equal(engine.isEmptyLineItem({ description: '   ', quantity: 1, unit: '式', price: 0 }), true);
+assert.equal(engine.isEmptyLineItem({ description: '初回相談費', quantity: 1, unit: '式', price: 0 }), false);
+assert.deepEqual(engine.filterMeaningfulItems([
+  { description: '', quantity: 1, unit: '式', price: 0 },
+  { description: '初回相談費', quantity: 1, unit: '式', price: 0 }
+]), [{ description: '初回相談費', quantity: 1, unit: '式', price: 0 }]);
 
 const summary = engine.buildSummary({
   quoteNumber: 'TKG-EST-TEST',
@@ -69,5 +76,15 @@ const splitSummary = engine.buildSummary({
 });
 assert.match(splitSummary, /宛名：鈴木 様/);
 assert.match(splitSummary, /ご請求します。\n残金のご入金確認後、正式な最終データを納品します。/);
+
+const zeroPriceSummary = engine.buildSummary({
+  items: [
+    { description: '', quantity: 1, unit: '式', price: 0 },
+    { description: '初回相談費', quantity: 1, unit: '式', price: 0 }
+  ],
+  taxRate: 10
+});
+assert.doesNotMatch(zeroPriceSummary, /未入力/);
+assert.match(zeroPriceSummary, /初回相談費 \/ 1式 \/ ¥0/);
 
 console.log('estimate-engine: all tests passed');

@@ -150,8 +150,19 @@
     return Number.isFinite(number) && number > 0 ? number : 0;
   }
 
+  function isEmptyLineItem(item) {
+    const data = item || {};
+    return !String(data.description || '').trim() && normalizeNumber(data.price) === 0;
+  }
+
+  function filterMeaningfulItems(items) {
+    return (Array.isArray(items) ? items : []).filter(function (item) {
+      return !isEmptyLineItem(item);
+    });
+  }
+
   function calculateTotals(items, taxRate) {
-    const normalizedItems = Array.isArray(items) ? items : [];
+    const normalizedItems = filterMeaningfulItems(items);
     const subtotal = normalizedItems.reduce(function (sum, item) {
       return sum + normalizeNumber(item.quantity) * normalizeNumber(item.price);
     }, 0);
@@ -186,7 +197,7 @@
   }
 
   function buildSummary(data) {
-    const items = Array.isArray(data.items) ? data.items : [];
+    const items = filterMeaningfulItems(data.items);
     const totals = calculateTotals(items, data.taxRate);
     const payment = getPaymentDetails(data.paymentType, data.customPayment);
     const lines = [
@@ -229,6 +240,8 @@
     recommendPaymentType,
     getPaymentDetails,
     classifyCase,
+    isEmptyLineItem,
+    filterMeaningfulItems,
     calculateTotals,
     formatYen,
     formatDate,
@@ -634,22 +647,37 @@
     return row;
   }
 
+  function readItemRow(row) {
+    return {
+      description: row.querySelector('.item-description').value.trim(),
+      quantity: normalizeNumber(row.querySelector('.item-quantity').value),
+      unit: row.querySelector('.item-unit').value,
+      price: normalizeNumber(row.querySelector('.item-price').value),
+      categoryCode: row.dataset.categoryItem || ''
+    };
+  }
+
   function readItems() {
     return Array.from(itemContainer.querySelectorAll('tr')).map(function (row) {
-      return {
-        description: row.querySelector('.item-description').value.trim(),
-        quantity: normalizeNumber(row.querySelector('.item-quantity').value),
-        unit: row.querySelector('.item-unit').value,
-        price: normalizeNumber(row.querySelector('.item-price').value),
-        categoryCode: row.dataset.categoryItem || ''
-      };
+      return readItemRow(row);
     });
+  }
+
+  function setLineItem(row, item) {
+    row.dataset.categoryItem = item.categoryCode;
+    row.querySelector('.item-description').value = item.description;
+    row.querySelector('.item-quantity').value = String(item.quantity);
+    row.querySelector('.item-unit').value = item.unit;
+    row.querySelector('.item-price').value = String(item.price);
   }
 
   function applyCategory() {
     const result = updateClassification();
     if (!result.category || !result.category.auto) return;
     const existing = itemContainer.querySelector('[data-category-item]');
+    const emptyRows = Array.from(itemContainer.querySelectorAll('tr')).filter(function (row) {
+      return isEmptyLineItem(readItemRow(row));
+    });
     const item = {
       description: result.category.label + ' 基本作業費',
       quantity: 1,
@@ -657,15 +685,15 @@
       price: result.category.price,
       categoryCode: result.category.code
     };
-    if (existing) {
-      existing.dataset.categoryItem = item.categoryCode;
-      existing.querySelector('.item-description').value = item.description;
-      existing.querySelector('.item-quantity').value = '1';
-      existing.querySelector('.item-unit').value = '式';
-      existing.querySelector('.item-price').value = String(item.price);
+    const target = existing || emptyRows[0];
+    if (target) {
+      setLineItem(target, item);
     } else {
       addLineItem(item);
     }
+    emptyRows.forEach(function (row) {
+      if (row !== target) row.remove();
+    });
     setStatus(result.category.label + 'を明細へ反映しました。');
     updatePreview();
   }
@@ -695,7 +723,7 @@
       paymentNote: payment.note,
       outputFormat: fields.outputFormat.value.trim(),
       notes: fields.notes.value,
-      items: readItems()
+      items: filterMeaningfulItems(readItems())
     };
   }
 
@@ -747,21 +775,12 @@
 
     const previewItems = byId('preview-items');
     previewItems.replaceChildren();
-    if (!data.items.length) {
-      const row = document.createElement('tr');
-      row.className = 'empty-row';
-      const cell = document.createElement('td');
-      cell.colSpan = 5;
-      cell.textContent = '見積明細を入力してください';
-      row.appendChild(cell);
-      previewItems.appendChild(row);
-      return;
-    }
+    if (!data.items.length) return;
 
     data.items.forEach(function (item) {
       const row = document.createElement('tr');
       const values = [
-        item.description || '未入力',
+        item.description,
         String(item.quantity),
         item.unit,
         formatYen(item.price),
