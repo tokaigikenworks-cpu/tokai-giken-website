@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildLocalClassification,
   buildOpenAIRequest,
+  enforceClassificationRules,
   handleEstimateRequest,
   limitPayloadForOpenAI,
   requestOpenAIClassification
@@ -22,6 +23,10 @@ assert.match(buildLocalClassification({ fitting: 'unknown' }).warnings.join('\n'
 assert.match(buildLocalClassification({ safety: 'unknown' }).warnings.join('\n'), /安全性/);
 assert.match(buildLocalClassification({ rush: 'rush' }).warnings.join('\n'), /短納期/);
 assert.match(buildLocalClassification({}).warnings.join('\n'), /主な目的/);
+assert.match(buildLocalClassification({}).warnings.join('\n'), /元になる情報/);
+assert.match(buildLocalClassification({}).warnings.join('\n'), /希望する納品物/);
+assert.equal(buildLocalClassification({}).category.code, 'A');
+assert.equal(buildLocalClassification({}).confidence, 0.35);
 
 const limited = limitPayloadForOpenAI({
   inquiryText: '会社名：株式会社テスト\n担当者：鈴木\n連絡先 test@example.com\n電話 090-1234-5678\nメッシュ化を希望',
@@ -43,6 +48,75 @@ assert.equal(requestBody.text.format.type, 'json_schema');
 assert.equal(requestBody.text.format.strict, true);
 assert.deepEqual(requestBody.text.format.schema.properties.category.enum, ['A', 'B', 'C', 'D', 'E']);
 assert.doesNotMatch(JSON.stringify(requestBody), /送信禁止/);
+assert.match(JSON.stringify(requestBody), /否定表現/);
+
+const bWithoutFittingWarning = enforceClassificationRules({
+  category: 'B',
+  confidence: 0.93,
+  reason: 'CAD再構築です。',
+  warnings: ['取付相手がいないため、嵌合確認や取付検証は実施できません。'],
+  inferredPurpose: 'reproduce'
+}, {
+  inquiryText: '廃番部品をCAD再構築したい。取付相手はなく、安全性への影響もありません。',
+  purpose: 'reproduce',
+  sourceType: 'physical',
+  fitting: 'none',
+  deliverable: 'cad'
+});
+assert.equal(bWithoutFittingWarning.category, 'B');
+assert.deepEqual(bWithoutFittingWarning.warnings, []);
+
+const fittingConflict = enforceClassificationRules({
+  category: 'D',
+  confidence: 0.8,
+  reason: '取付確認を含みます。',
+  warnings: ['取付相手が不明です。'],
+  inferredPurpose: 'vehicle'
+}, {
+  inquiryText: '車両への取付確認が必要です。',
+  purpose: 'vehicle',
+  sourceType: 'physical',
+  fitting: 'none',
+  deliverable: 'prototype'
+});
+assert.deepEqual(fittingConflict.warnings, ['取付条件について、選択内容と問い合わせ本文が一致していません。確認してください。']);
+
+const insufficient = enforceClassificationRules({
+  category: 'E',
+  confidence: 0.98,
+  reason: '量産案件と推測しました。',
+  warnings: ['量産体制を確認してください。'],
+  inferredPurpose: 'sell'
+}, {
+  inquiryText: '部品を作ってほしいです。用途や必要なデータ、取付条件などの詳細はまだ決まっていません。',
+  purpose: '',
+  sourceType: '',
+  fitting: 'none',
+  deliverable: ''
+});
+assert.equal(insufficient.category, 'A');
+assert.equal(insufficient.inferredPurpose, 'other');
+assert.ok(insufficient.confidence <= 0.35);
+assert.match(insufficient.reason, /情報が不足/);
+assert.match(insufficient.warnings.join('\n'), /主な目的/);
+assert.match(insufficient.warnings.join('\n'), /元になる情報/);
+assert.match(insufficient.warnings.join('\n'), /希望する納品物/);
+assert.doesNotMatch(insufficient.warnings.join('\n'), /量産/);
+
+const negatedRequirements = enforceClassificationRules({
+  category: 'B',
+  confidence: 0.8,
+  reason: '再構築です。',
+  warnings: ['設計変更が必要です。', '試作が必要です。', '量産検討が必要です。', '安全確認が必要です。'],
+  inferredPurpose: 'reproduce'
+}, {
+  inquiryText: '設計変更は不要です。試作品の納品は不要です。量産対応は不要です。安全性への影響はありません。',
+  purpose: 'reproduce',
+  sourceType: 'physical',
+  fitting: 'none',
+  deliverable: 'cad'
+});
+assert.deepEqual(negatedRequirements.warnings, []);
 
 let capturedOpenAIRequest = null;
 const openaiFetch = async (url, options) => {

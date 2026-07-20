@@ -76,8 +76,16 @@
     return CATEGORY_ORDER.indexOf(current) >= CATEGORY_ORDER.indexOf(minimum) ? current : minimum;
   }
 
+  function affirmativeRequirementText(text) {
+    return String(text || '').split(/[。！？\n]+/).filter(function (clause) {
+      const hasRequirementWord = /取付|取り付け|嵌合|設計変更|試作|量産|販売|安全性|法規|必要なデータ|用途/.test(clause);
+      const isNegatedOrUndecided = /不要|必要(?:は|が|も)?(?:ない|ありません)|影響(?:は|が|も)?(?:ない|ありません)|相手(?:は|が|も)?(?:ない|ありません|なく)|嵌合なし|取付なし|未定|不明|決まっていません|わかりません/.test(clause);
+      return !(hasRequirementWord && isNegatedOrUndecided);
+    }).join('。');
+  }
+
   function inferPurpose(text) {
-    const source = String(text || '');
+    const source = affirmativeRequirementText(text);
     if (/販売|量産|商品化|外注先|ロット/.test(source)) return 'sell';
     if (/取り付け|取付|嵌合|干渉|車両|車種|ブラケット|マウント/.test(source)) return 'vehicle';
     if (/同じ物|再製作|再現|廃番|生産終了|複製/.test(source)) return 'reproduce';

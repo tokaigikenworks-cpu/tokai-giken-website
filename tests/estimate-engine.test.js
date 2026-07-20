@@ -15,6 +15,10 @@ assert.equal(category({ purpose: 'vehicle', fitting: 'known', deliverable: 'prot
 assert.equal(category({ purpose: 'sell', deliverable: 'support', safety: 'low' }), 'E');
 assert.equal(category({ purpose: 'data', deliverable: 'reference', safety: 'high' }), 'E');
 assert.equal(category({ inquiryText: '廃番部品と同じ物を再製作したい', deliverable: 'cad', safety: 'low' }), 'B');
+assert.equal(engine.inferPurpose('取付相手はなく、安全性への影響もありません。'), '');
+assert.equal(engine.inferPurpose('部品を作ってほしいです。用途や必要なデータ、取付条件などの詳細はまだ決まっていません。'), '');
+assert.equal(engine.inferPurpose('車両への取付確認が必要です。'), 'vehicle');
+assert.equal(engine.inferPurpose('量産対応と試作品の納品は不要です。'), '');
 assert.equal(engine.recommendPaymentType({ code: 'A' }), 'prepaid');
 assert.equal(engine.recommendPaymentType({ code: 'D' }), 'split');
 assert.equal(engine.getPaymentDetails('split').quoteLabel, '着手金50％・残金50％');

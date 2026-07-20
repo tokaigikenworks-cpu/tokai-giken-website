@@ -64,6 +64,8 @@ const document = dom.window.document;
 const change = new dom.window.Event('change', { bubbles: true });
 const input = new dom.window.Event('input', { bubbles: true });
 assert.equal(document.querySelector('.estimate-hero h1').textContent.trim(), 'トカイ技研の見積ツール');
+assert.equal(document.querySelector('#deliverable').value, '');
+assert.equal(document.querySelector('#deliverable option:first-child').textContent, '選択してください');
 assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
 assert.equal(document.querySelector('#payment-type').value, 'prepaid');
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
@@ -164,6 +166,7 @@ document.querySelector('#save-json').click();
 assert.equal(jsonDownloadName, '20260719_1.json');
 
 document.querySelector('#reset-estimate').click();
+assert.equal(document.querySelector('#deliverable').value, '');
 issueDate.value = '2026-07-19';
 issueDate.dispatchEvent(input);
 assert.equal(quoteNumber.value, '20260719_2');
@@ -178,11 +181,13 @@ Object.defineProperty(loadInput, 'files', {
   value: [{ contents: JSON.stringify({
     quoteNumber: '20260718_7',
     issueDate: '2026-07-18',
+    deliverable: '',
     items: []
   }) }]
 });
 loadInput.dispatchEvent(change);
 assert.equal(quoteNumber.value, '20260718_7');
+assert.equal(document.querySelector('#deliverable').value, '');
 issueDate.value = '2026-07-20';
 issueDate.dispatchEvent(change);
 assert.equal(quoteNumber.value, '20260718_7');
