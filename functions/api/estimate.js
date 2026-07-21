@@ -423,9 +423,6 @@ export async function handleEstimateRequest(request, env = {}, fetchImpl = fetch
   });
   const limited = limitPayloadForOpenAI(payload);
   const model = env.OPENAI_MODEL || DEFAULT_MODEL;
-  if (env.CF_PAGES_BRANCH === 'main') {
-    return jsonResponse(fallbackBody(payload, 'preview_only', startedAt, { model, redactionCount: limited.redactionCount }), 200);
-  }
   if (!env.OPENAI_API_KEY) {
     return jsonResponse(fallbackBody(payload, 'missing_secret', startedAt, { model, redactionCount: limited.redactionCount }), 200);
   }

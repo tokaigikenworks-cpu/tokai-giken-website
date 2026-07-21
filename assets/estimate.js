@@ -581,7 +581,7 @@
     updateClassification();
     button.disabled = true;
     button.textContent = 'APIへ送信中…';
-    setApiClassificationStatus('問い合わせ文と選択条件をPreview環境のAPIへ送信しています。', 'loading');
+    setApiClassificationStatus('問い合わせ文と選択条件をAPIへ送信しています。', 'loading');
     try {
       const response = await fetch('/api/estimate', {
         method: 'POST',
@@ -1150,7 +1150,7 @@
     itemContainer.replaceChildren();
     clearImagePreviews();
     clearApiClassification();
-    setApiClassificationStatus('ローカル判定とPreview環境のAPI判定を比較します。API結果は自動反映されません。');
+    setApiClassificationStatus('ローカル判定とAPI判定を比較します。API結果は自動反映されません。');
     setInitialValues();
     initializeNewRecord();
     paymentManuallyChanged = false;

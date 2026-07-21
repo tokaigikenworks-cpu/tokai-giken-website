@@ -184,14 +184,14 @@ let productionFetchCalled = false;
 const productionResponse = await handleEstimateRequest(new Request('https://example.test/api/estimate', {
   method: 'POST',
   body: JSON.stringify({ purpose: 'sell' })
-}), { OPENAI_API_KEY: 'test-secret', CF_PAGES_BRANCH: 'main' }, async () => {
+}), { OPENAI_API_KEY: 'test-secret', CF_PAGES_BRANCH: 'main' }, async (url, options) => {
   productionFetchCalled = true;
-  return new Response();
+  return openaiFetch(url, options);
 });
 const productionData = await productionResponse.json();
-assert.equal(productionData.mode, 'local-fallback');
-assert.equal(productionData.meta.fallbackReason, 'preview_only');
-assert.equal(productionFetchCalled, false);
+assert.equal(productionData.mode, 'openai');
+assert.equal(productionData.classification.category.code, 'D');
+assert.equal(productionFetchCalled, true);
 
 const rateLimitResponse = await handleEstimateRequest(new Request('https://example.test/api/estimate', {
   method: 'POST',
