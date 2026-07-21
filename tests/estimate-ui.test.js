@@ -14,14 +14,45 @@ const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.
 let printCalls = 0;
 const printTitles = [];
 let apiRequest = null;
+const sheetRequests = [];
+let lastCreatedBlob = null;
+let uuidSequence = 0;
 dom.window.print = () => {
   printCalls += 1;
   printTitles.push(dom.window.document.title);
 };
 dom.window.confirm = () => true;
-dom.window.URL.createObjectURL = () => 'blob:estimate-test';
+Object.defineProperty(dom.window.crypto, 'randomUUID', {
+  configurable: true,
+  value: () => '00000000-0000-4000-8000-' + String(++uuidSequence).padStart(12, '0')
+});
+class TestBlob {
+  constructor(parts, options) {
+    this.parts = parts;
+    this.type = options && options.type;
+  }
+}
+dom.window.Blob = TestBlob;
+dom.window.URL.createObjectURL = (blob) => {
+  lastCreatedBlob = blob;
+  return 'blob:estimate-test';
+};
 dom.window.URL.revokeObjectURL = () => {};
 dom.window.fetch = async (url, options) => {
+  if (url === '/api/save-estimate') {
+    const body = JSON.parse(options.body);
+    sheetRequests.push({ url, options, body });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        action: sheetRequests.length === 1 ? 'created' : 'updated',
+        recordId: body.record.recordId,
+        savedAt: '2026-07-21 18:0' + sheetRequests.length + ':00'
+      })
+    };
+  }
   apiRequest = { url, options };
   return {
     ok: true,
@@ -68,6 +99,9 @@ assert.equal(document.querySelector('#deliverable').value, '');
 assert.equal(document.querySelector('#deliverable option:first-child').textContent, '選択してください');
 assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
 assert.equal(document.querySelector('#payment-type').value, 'prepaid');
+assert.equal(document.querySelector('#record-status').value, '見積作成中');
+assert.equal(document.querySelector('#save-to-sheet').textContent.trim(), '案件をスプレッドシートに保存');
+assert.equal(document.querySelector('#sheet-save-status').textContent.trim(), '未保存');
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
 assert.deepEqual(Array.from(document.querySelectorAll('#honorific option'), (option) => option.textContent), ['御中', '様']);
 assert.match(document.querySelector('.recipient-help').textContent, /個人名は「様」/);
@@ -83,6 +117,7 @@ assert.equal(document.querySelectorAll('#preview-items tr').length, 0);
 assert.equal(document.querySelector('#editor-total').textContent, '¥0');
 assert.match(document.querySelector('.edit-data-help').textContent, /後から再編集/);
 assert.match(styles, /\.tool-actions \.button[\s\S]*min-height: 48px/);
+assert.match(styles, /\.sheet-save-status\[data-state="saved"\]/);
 assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !important/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.line-items-table tr[\s\S]*display: grid/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-actions[\s\S]*grid-template-columns: 1fr/);
@@ -184,17 +219,42 @@ assert.equal(printCalls, 1);
 assert.equal(printTitles[0], '20260719_1');
 assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), '1');
 assert.equal(document.title, originalTitle);
+assert.equal(document.querySelector('#record-status').value, '見積提出済み');
+assert.equal(sheetRequests.length, 1);
+const initialRecordId = sheetRequests[0].body.record.recordId;
+assert.match(initialRecordId, /^[0-9a-f-]{36}$/);
+assert.equal(sheetRequests[0].body.record.status, '見積提出済み');
+assert.match(sheetRequests[0].body.record.pdfIssuedAt, /^\d{4}-\d{2}-\d{2}T/);
+assert.equal(sheetRequests[0].body.record.total, 220000);
+assert.equal(sheetRequests[0].body.record.items.length, 1);
+assert.equal('secret' in sheetRequests[0].body, false);
+assert.equal('environment' in sheetRequests[0].body, false);
 document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
 assert.equal(printCalls, 2);
 assert.equal(dom.window.localStorage.getItem('estimate-sequence-20260719'), '1');
+assert.equal(sheetRequests.length, 2);
+assert.equal(sheetRequests[1].body.record.recordId, initialRecordId);
 
 let jsonDownloadName = '';
 dom.window.HTMLAnchorElement.prototype.click = function () { jsonDownloadName = this.download; };
 document.querySelector('#save-json').click();
 assert.equal(jsonDownloadName, '20260719_1.json');
+const savedVersion3 = JSON.parse(lastCreatedBlob.parts.join(''));
+assert.equal(savedVersion3.version, 3);
+assert.equal(savedVersion3.recordId, initialRecordId);
+assert.equal(savedVersion3.recordStatus, '見積提出済み');
+assert.match(savedVersion3.recordCreatedAt, /^\d{4}-\d{2}-\d{2}T/);
+assert.match(savedVersion3.pdfIssuedAt, /^\d{4}-\d{2}-\d{2}T/);
+assert.equal(savedVersion3.apiClass, '');
+assert.equal(savedVersion3.apiResponseMs, '');
+assert.equal(savedVersion3.apiTokens, '');
 
 document.querySelector('#reset-estimate').click();
 assert.equal(document.querySelector('#deliverable').value, '');
+document.querySelector('#save-json').click();
+const resetVersion3 = JSON.parse(lastCreatedBlob.parts.join(''));
+assert.notEqual(resetVersion3.recordId, initialRecordId);
+assert.equal(resetVersion3.recordStatus, '見積作成中');
 issueDate.value = '2026-07-19';
 issueDate.dispatchEvent(input);
 assert.equal(quoteNumber.value, '20260719_2');
@@ -206,6 +266,13 @@ assert.equal(quoteNumber.value, '20260720_1');
 const loadInput = document.querySelector('#load-json');
 Object.defineProperty(loadInput, 'files', {
   configurable: true,
+  value: [{ contents: JSON.stringify(savedVersion3) }]
+});
+loadInput.dispatchEvent(change);
+document.querySelector('#save-json').click();
+assert.equal(JSON.parse(lastCreatedBlob.parts.join('')).recordId, initialRecordId);
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
   value: [{ contents: JSON.stringify({
     quoteNumber: '20260718_7',
     issueDate: '2026-07-18',
@@ -214,6 +281,11 @@ Object.defineProperty(loadInput, 'files', {
   }) }]
 });
 loadInput.dispatchEvent(change);
+document.querySelector('#save-json').click();
+const upgradedVersion2 = JSON.parse(lastCreatedBlob.parts.join(''));
+assert.equal(upgradedVersion2.version, 3);
+assert.ok(upgradedVersion2.recordId);
+assert.notEqual(upgradedVersion2.recordId, initialRecordId);
 assert.equal(quoteNumber.value, '20260718_7');
 assert.equal(document.querySelector('#deliverable').value, '');
 issueDate.value = '2026-07-20';
@@ -254,28 +326,62 @@ async function testApiIntegration() {
   assert.match(document.querySelector('#api-classification-status').textContent, /比較後/);
   assert.equal(document.querySelector('#classify-with-api').disabled, false);
 
+  const sheetCountBeforeComparisonSave = sheetRequests.length;
+  document.querySelector('#save-to-sheet').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sheetRequests.length, sheetCountBeforeComparisonSave + 1);
+  const comparisonRecord = sheetRequests.at(-1).body.record;
+  assert.equal(comparisonRecord.localClass, 'E');
+  assert.equal(comparisonRecord.apiClass, 'D');
+  assert.equal(comparisonRecord.comparisonResult, '不一致');
+  assert.equal(comparisonRecord.apiConfidence, 0.91);
+  assert.match(comparisonRecord.apiReason, /モックAPIから返した/);
+  assert.deepEqual(comparisonRecord.apiWarnings, ['モックAPI応答です。']);
+  assert.equal(comparisonRecord.finalClass, 'E');
+  assert.equal(comparisonRecord.apiModel, 'gpt-5.6-luna');
+  assert.equal(comparisonRecord.apiResponseMs, 840);
+  assert.equal(comparisonRecord.apiTokens, 160);
+  assert.equal(document.querySelector('#sheet-save-status').dataset.state, 'saved');
+
   document.querySelector('#adopt-api-classification').click();
   assert.equal(document.querySelector('#category-code').textContent, 'D');
   assert.equal(document.querySelector('#category-label').textContent, '設計・試作支援 / ¥200,000〜');
   assert.match(document.querySelector('#category-reason').textContent, /モックAPIから返した/);
   assert.equal(document.querySelector('#payment-type').value, 'prepaid');
   assert.equal(document.querySelector('#adopt-api-classification').disabled, true);
+  document.querySelector('#save-to-sheet').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sheetRequests.at(-1).body.record.recordId, comparisonRecord.recordId);
+  assert.equal(sheetRequests.at(-1).body.record.finalClass, 'D');
+
+  document.querySelector('#record-status').value = '保留';
+  document.querySelector('#record-status').dispatchEvent(change);
+  assert.equal(document.querySelector('#sheet-save-status').textContent, '未保存');
+  document.querySelector('#save-to-sheet').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sheetRequests.at(-1).body.record.status, '保留');
+  assert.equal(document.querySelector('#record-status').value, '保留');
 
   document.querySelector('#inquiry-text').dispatchEvent(input);
   assert.equal(document.querySelector('#category-code').textContent, 'E');
   assert.equal(document.querySelector('#classification-comparison').hidden, true);
   assert.match(document.querySelector('#api-classification-status').textContent, /もう一度/);
 
-  dom.window.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({
+  dom.window.fetch = async (url) => {
+    if (url === '/api/save-estimate') {
+      return { ok: false, status: 502, json: async () => ({ ok: false, error: 'sheets_save_failed' }) };
+    }
+    return {
       ok: true,
-      mode: 'local-fallback',
-      classification: {},
-      meta: { fallbackReason: 'rate_limit' }
-    })
-  });
+      status: 200,
+      json: async () => ({
+        ok: true,
+        mode: 'local-fallback',
+        classification: {},
+        meta: { fallbackReason: 'rate_limit' }
+      })
+    };
+  };
   document.querySelector('#classify-with-api').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#comparison-match').textContent, 'ローカルへフォールバック');
@@ -283,6 +389,13 @@ async function testApiIntegration() {
   assert.equal(document.querySelector('#adopt-api-classification').disabled, true);
   assert.equal(document.querySelector('#category-code').textContent, 'E');
   assert.match(document.querySelector('#comparison-meta').textContent, /rate_limit/);
+
+  const projectBeforeFailure = document.querySelector('#project-name').value;
+  document.querySelector('#save-to-sheet').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#sheet-save-status').dataset.state, 'error');
+  assert.equal(document.querySelector('#project-name').value, projectBeforeFailure);
+  assert.equal(printCalls, 2);
 }
 
 testApiIntegration()

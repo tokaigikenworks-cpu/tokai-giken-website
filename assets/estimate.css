@@ -599,6 +599,37 @@
   white-space: nowrap;
 }
 
+.sheet-save-button {
+  border: 1px solid var(--orange);
+  background: var(--orange);
+  color: #fff;
+}
+
+.sheet-save-button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+.sheet-save-status {
+  width: 100%;
+  min-height: 1.4em;
+  margin: 0 0 4px;
+  color: #656158;
+  font-size: 10px;
+}
+
+.sheet-save-status[data-state="saved"] {
+  color: #2f6f49;
+}
+
+.sheet-save-status[data-state="saving"] {
+  color: var(--orange);
+}
+
+.sheet-save-status[data-state="error"] {
+  color: #8b3328;
+}
+
 .edit-data-help {
   width: 100%;
   color: #656158;
@@ -1279,6 +1310,10 @@
   }
 
   #action-status {
+    grid-column: 1 / -1;
+  }
+
+  .sheet-save-status {
     grid-column: 1 / -1;
   }
 

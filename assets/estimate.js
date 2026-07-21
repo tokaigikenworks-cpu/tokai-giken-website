@@ -268,6 +268,7 @@
     projectName: byId('project-name'),
     validUntil: byId('valid-until'),
     delivery: byId('delivery'),
+    recordStatus: byId('record-status'),
     inquiryText: byId('inquiry-text'),
     purpose: byId('purpose'),
     sourceType: byId('source-type'),
@@ -299,12 +300,49 @@
   let issuedQuoteNumber = '';
   let pendingApiClassificationResult = null;
   let adoptedApiClassificationResult = null;
+  let lastApiComparison = null;
+  let recordId = '';
+  let recordCreatedAt = '';
+  let lastSheetSavedAt = '';
+  let pdfIssuedAt = '';
+  let recordStatusManuallyChanged = false;
+  let sheetRevision = 0;
 
   const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
   function toLocalISODate(date) {
     const offset = date.getTimezoneOffset();
     return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10);
+  }
+
+  function createRecordId() {
+    return window.crypto.randomUUID();
+  }
+
+  function currentTimestamp() {
+    return new Date().toISOString();
+  }
+
+  function setSheetSaveStatus(state, message) {
+    const status = byId('sheet-save-status');
+    status.dataset.state = state;
+    status.textContent = message;
+  }
+
+  function markSheetDirty() {
+    sheetRevision += 1;
+    setSheetSaveStatus('unsaved', '未保存');
+  }
+
+  function initializeNewRecord() {
+    recordId = createRecordId();
+    recordCreatedAt = currentTimestamp();
+    lastSheetSavedAt = '';
+    pdfIssuedAt = '';
+    recordStatusManuallyChanged = false;
+    fields.recordStatus.value = fields.quoteNumber.value.trim() ? '見積作成中' : '未対応';
+    sheetRevision += 1;
+    setSheetSaveStatus('unsaved', '未保存');
   }
 
   function sequenceStorageKey(issueDate) {
@@ -358,12 +396,21 @@
       }
     }
     issuedQuoteNumber = quoteNumber;
+    if (quoteNumber && !recordStatusManuallyChanged && fields.recordStatus.value === '未対応') {
+      fields.recordStatus.value = '見積作成中';
+    }
     updatePreview();
     return quoteNumber;
   }
 
   function printEstimate() {
     const quoteNumber = finalizeQuoteNumber();
+    pdfIssuedAt = currentTimestamp();
+    fields.recordStatus.value = '見積提出済み';
+    recordStatusManuallyChanged = false;
+    markSheetDirty();
+    updatePreview();
+    void saveEstimateToSheet({ pdf: true });
     const originalTitle = document.title;
     let restored = false;
     const restoreTitle = function () {
@@ -421,6 +468,7 @@
     const hadApiResult = pendingApiClassificationResult || adoptedApiClassificationResult || !comparison.hidden;
     pendingApiClassificationResult = null;
     adoptedApiClassificationResult = null;
+    lastApiComparison = null;
     comparison.hidden = true;
     byId('adopt-api-classification').disabled = true;
     byId('adopt-api-classification').textContent = 'API判定を採用する';
@@ -471,6 +519,18 @@
 
     if (response.mode === 'openai') {
       const isMatch = localCode === apiCode;
+      lastApiComparison = {
+        localClass: localCode === '—' ? '' : localCode,
+        localReason: localResult.category ? localResult.category.reason : '',
+        apiClass: apiCode === '—' ? '' : apiCode,
+        comparisonResult: isMatch ? '一致' : '不一致',
+        apiConfidence: apiResult.confidence,
+        apiReason: apiResult.category ? apiResult.category.reason : '',
+        apiWarnings: Array.isArray(apiResult.warnings) ? apiResult.warnings.slice() : [],
+        apiModel: meta.model || '',
+        apiResponseMs: Number(meta.durationMs) || 0,
+        apiTokens: meta.usage && Number(meta.usage.total_tokens) || 0
+      };
       match.textContent = isMatch ? '一致' : '不一致';
       match.dataset.state = isMatch ? 'match' : 'mismatch';
       adoptButton.disabled = false;
@@ -483,6 +543,18 @@
     }
 
     match.textContent = 'ローカルへフォールバック';
+    lastApiComparison = {
+      localClass: localCode === '—' ? '' : localCode,
+      localReason: localResult.category ? localResult.category.reason : '',
+      apiClass: '',
+      comparisonResult: 'ローカルへフォールバック',
+      apiConfidence: '',
+      apiReason: '',
+      apiWarnings: [],
+      apiModel: '',
+      apiResponseMs: '',
+      apiTokens: ''
+    };
     match.dataset.state = 'fallback';
     adoptButton.disabled = true;
     adoptButton.textContent = 'API判定は採用できません';
@@ -497,6 +569,7 @@
     button.disabled = true;
     button.textContent = 'API判定を採用済み';
     setApiClassificationStatus('API判定を採用しました。金額・支払条件・明細は既存ロジックのままです。', 'success');
+    markSheetDirty();
   }
 
   async function classifyWithApi() {
@@ -523,9 +596,11 @@
         pendingApiClassificationResult = apiResult;
         renderClassificationComparison(localResult, apiResult, data);
         setApiClassificationStatus('API判定を取得しました。比較後、必要な場合だけ採用してください。', 'success');
+        markSheetDirty();
       } else {
         renderClassificationComparison(localResult, localResult, data);
         setApiClassificationStatus('OpenAI APIを使用できなかったため、ローカル判定で継続しています。', 'error');
+        markSheetDirty();
       }
     } catch (error) {
       const fallbackResponse = {
@@ -534,6 +609,7 @@
       };
       renderClassificationComparison(localResult, localResult, fallbackResponse);
       setApiClassificationStatus('APIへ接続できなかったため、ローカル判定で見積作成を継続できます。', 'error');
+      markSheetDirty();
     } finally {
       window.clearTimeout(timeout);
       button.disabled = false;
@@ -695,13 +771,43 @@
       if (row !== target) row.remove();
     });
     setStatus(result.category.label + 'を明細へ反映しました。');
+    markSheetDirty();
     updatePreview();
+  }
+
+  function classificationSnapshot() {
+    const localResult = classifyCase(currentClassificationInput());
+    const localClass = localResult.category ? localResult.category.code : '';
+    const localReason = localResult.category ? localResult.category.reason : '';
+    const comparison = lastApiComparison || {};
+    return {
+      localClass: comparison.localClass || localClass,
+      localReason: comparison.localReason || localReason,
+      apiClass: comparison.apiClass || '',
+      comparisonResult: comparison.comparisonResult || '',
+      apiConfidence: comparison.apiConfidence === '' || comparison.apiConfidence == null ? '' : Number(comparison.apiConfidence),
+      apiReason: comparison.apiReason || '',
+      apiWarnings: Array.isArray(comparison.apiWarnings) ? comparison.apiWarnings.slice() : [],
+      finalClass: adoptedApiClassificationResult && adoptedApiClassificationResult.category
+        ? adoptedApiClassificationResult.category.code
+        : localClass,
+      apiModel: comparison.apiModel || '',
+      apiResponseMs: comparison.apiResponseMs === '' || comparison.apiResponseMs == null ? '' : Number(comparison.apiResponseMs),
+      apiTokens: comparison.apiTokens === '' || comparison.apiTokens == null ? '' : Number(comparison.apiTokens),
+      apiAdopted: Boolean(adoptedApiClassificationResult && adoptedApiClassificationResult.category)
+    };
   }
 
   function readData() {
     const payment = getPaymentDetails(fields.paymentType.value, fields.customPayment.value);
+    const classification = classificationSnapshot();
     return {
-      version: 2,
+      version: 3,
+      recordId,
+      recordStatus: fields.recordStatus.value,
+      recordCreatedAt,
+      lastSheetSavedAt,
+      pdfIssuedAt,
       quoteNumber: fields.quoteNumber.value.trim(),
       issueDate: fields.issueDate.value,
       clientName: fields.clientName.value.trim(),
@@ -723,8 +829,104 @@
       paymentNote: payment.note,
       outputFormat: fields.outputFormat.value.trim(),
       notes: fields.notes.value,
-      items: filterMeaningfulItems(readItems())
+      items: filterMeaningfulItems(readItems()),
+      localClass: classification.localClass,
+      localReason: classification.localReason,
+      apiClass: classification.apiClass,
+      comparisonResult: classification.comparisonResult,
+      apiConfidence: classification.apiConfidence,
+      apiReason: classification.apiReason,
+      apiWarnings: classification.apiWarnings,
+      finalClass: classification.finalClass,
+      apiModel: classification.apiModel,
+      apiResponseMs: classification.apiResponseMs,
+      apiTokens: classification.apiTokens,
+      apiAdopted: classification.apiAdopted
     };
+  }
+
+  function buildSheetRecord() {
+    const data = readData();
+    const totals = calculateTotals(data.items, data.taxRate);
+    return {
+      recordId: data.recordId,
+      createdAt: data.recordCreatedAt,
+      pdfIssuedAt: data.pdfIssuedAt,
+      status: data.recordStatus,
+      quoteNumber: data.quoteNumber,
+      issueDate: data.issueDate,
+      clientName: data.clientName,
+      honorific: data.honorific,
+      projectName: data.projectName,
+      inquiryText: data.inquiryText,
+      delivery: data.delivery,
+      validUntil: data.validUntil,
+      notes: data.notes,
+      purpose: data.purpose,
+      sourceType: data.sourceType,
+      fitting: data.fitting,
+      deliverable: data.deliverable,
+      safety: data.safety,
+      rush: data.rush,
+      localClass: data.localClass,
+      localReason: data.localReason,
+      apiClass: data.apiClass,
+      comparisonResult: data.comparisonResult,
+      apiConfidence: data.apiConfidence,
+      apiReason: data.apiReason,
+      apiWarnings: data.apiWarnings,
+      finalClass: data.finalClass,
+      apiModel: data.apiModel,
+      apiResponseMs: data.apiResponseMs,
+      apiTokens: data.apiTokens,
+      items: data.items,
+      subtotal: totals.subtotal,
+      taxRate: data.taxRate,
+      taxAmount: totals.tax,
+      total: totals.total,
+      paymentType: data.paymentType,
+      customPayment: data.customPayment,
+      payment: data.payment,
+      paymentNote: data.paymentNote,
+      outputFormat: data.outputFormat
+    };
+  }
+
+  async function saveEstimateToSheet(options) {
+    const settings = options || {};
+    const button = byId('save-to-sheet');
+    const revisionAtStart = sheetRevision;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(function () { controller.abort(); }, 12000);
+    button.disabled = true;
+    setSheetSaveStatus('saving', '保存中');
+    try {
+      const response = await fetch('/api/save-estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record: buildSheetRecord() }),
+        signal: controller.signal
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok || result.ok !== true || result.recordId !== recordId) {
+        throw new Error(result.error || 'sheets_save_failed');
+      }
+      lastSheetSavedAt = String(result.savedAt || '');
+      if (revisionAtStart === sheetRevision) {
+        setSheetSaveStatus('saved', '保存済み　最終保存日時：' + (lastSheetSavedAt || '日時未取得'));
+      } else {
+        setSheetSaveStatus('unsaved', '未保存（保存開始後に変更があります）');
+      }
+      if (settings.pdf) setStatus('PDF発行情報をスプレッドシートへ保存しました');
+      return true;
+    } catch (error) {
+      setSheetSaveStatus('error', '保存失敗');
+      if (settings.pdf) setStatus('PDFは作成しましたが、スプレッドシートへの保存に失敗しました');
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+      button.disabled = false;
+    }
   }
 
   function setText(id, value) {
@@ -870,9 +1072,48 @@
     return 'custom';
   }
 
+  function restoreSavedApiComparison(data) {
+    if (!data.apiClass || !CATEGORIES[data.apiClass]) return;
+    const localResult = classifyCase(currentClassificationInput());
+    const category = CATEGORIES[data.apiClass];
+    const apiResult = {
+      category: {
+        code: category.code,
+        label: category.label,
+        price: category.price,
+        auto: category.auto,
+        reason: data.apiReason || category.reason
+      },
+      confidence: Number(data.apiConfidence) || 0,
+      warnings: Array.isArray(data.apiWarnings) ? data.apiWarnings.map(String) : [],
+      inferredPurpose: ''
+    };
+    pendingApiClassificationResult = apiResult;
+    renderClassificationComparison(localResult, apiResult, {
+      mode: 'openai',
+      meta: {
+        model: data.apiModel || '',
+        durationMs: Number(data.apiResponseMs) || 0,
+        usage: { total_tokens: Number(data.apiTokens) || 0 }
+      }
+    });
+    if (data.apiAdopted) {
+      adoptedApiClassificationResult = apiResult;
+      byId('adopt-api-classification').disabled = true;
+      byId('adopt-api-classification').textContent = 'API判定を採用済み';
+      setApiClassificationStatus('保存済みのAPI比較結果と採用状態を復元しました。', 'success');
+    } else {
+      setApiClassificationStatus('保存済みのAPI比較結果を復元しました。API結果は自動反映されません。', 'success');
+    }
+  }
+
   function loadData(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) throw new Error('見積データの形式が正しくありません。');
     const paymentType = data.paymentType || inferPaymentType(data.payment);
+    recordId = String(data.recordId || '').trim() || createRecordId();
+    recordCreatedAt = String(data.recordCreatedAt || data.createdAt || '').trim() || currentTimestamp();
+    lastSheetSavedAt = String(data.lastSheetSavedAt || '').trim();
+    pdfIssuedAt = String(data.pdfIssuedAt || '').trim();
     quoteNumberIsAutomatic = !String(data.quoteNumber || '').trim();
     issuedQuoteNumber = '';
     clearApiClassification();
@@ -882,6 +1123,11 @@
     setFieldValue('taxRate', data.taxRate == null ? 10 : data.taxRate);
     fields.paymentType.value = paymentType;
     fields.customPayment.value = data.customPayment || (paymentType === 'custom' ? data.payment || '' : '');
+    const restoredStatus = String(data.recordStatus || data.status || '').trim();
+    fields.recordStatus.value = Array.from(fields.recordStatus.options).some(function (option) { return option.value === restoredStatus; })
+      ? restoredStatus
+      : (String(data.quoteNumber || '').trim() ? '見積作成中' : '未対応');
+    recordStatusManuallyChanged = Boolean(restoredStatus);
     if (quoteNumberIsAutomatic) refreshAutomaticQuoteNumber();
     paymentManuallyChanged = true;
     updatePaymentFields();
@@ -889,6 +1135,13 @@
     data.items.forEach(addLineItem);
     if (!data.items.length) updatePreview();
     updateClassification();
+    restoreSavedApiComparison(data);
+    updateClassification();
+    if (lastSheetSavedAt) {
+      setSheetSaveStatus('saved', '保存済み　最終保存日時：' + lastSheetSavedAt);
+    } else {
+      setSheetSaveStatus('unsaved', '未保存');
+    }
   }
 
   function resetForm() {
@@ -899,6 +1152,7 @@
     clearApiClassification();
     setApiClassificationStatus('ローカル判定とPreview環境のAPI判定を比較します。API結果は自動反映されません。');
     setInitialValues();
+    initializeNewRecord();
     paymentManuallyChanged = false;
     fields.paymentType.value = 'prepaid';
     fields.customPayment.value = '';
@@ -910,6 +1164,7 @@
   }
 
   form.addEventListener('input', function (event) {
+    markSheetDirty();
     if (event.target === fields.quoteNumber) {
       quoteNumberIsAutomatic = false;
       issuedQuoteNumber = '';
@@ -919,16 +1174,19 @@
       refreshAutomaticQuoteNumber();
     }
     if (classificationFields.includes(event.target)) clearApiClassification();
+    if (event.target === fields.recordStatus) recordStatusManuallyChanged = true;
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
   });
   form.addEventListener('change', function (event) {
+    markSheetDirty();
     if (event.target === fields.issueDate) {
       issuedQuoteNumber = '';
       refreshAutomaticQuoteNumber();
     }
     if (classificationFields.includes(event.target)) clearApiClassification();
+    if (event.target === fields.recordStatus) recordStatusManuallyChanged = true;
     if (event.target === fields.paymentType || event.target === fields.customPayment) paymentManuallyChanged = true;
     updateClassification();
     updatePreview();
@@ -942,9 +1200,13 @@
     const button = event.target.closest('.remove-item');
     if (!button) return;
     button.closest('tr').remove();
+    markSheetDirty();
     updatePreview();
   });
-  byId('add-item').addEventListener('click', function () { addLineItem(); });
+  byId('add-item').addEventListener('click', function () {
+    addLineItem();
+    markSheetDirty();
+  });
   byId('apply-category').addEventListener('click', applyCategory);
   byId('classify-with-api').addEventListener('click', classifyWithApi);
   byId('adopt-api-classification').addEventListener('click', adoptApiClassification);
@@ -957,6 +1219,7 @@
     }
   });
   byId('copy-summary').addEventListener('click', copySummary);
+  byId('save-to-sheet').addEventListener('click', function () { void saveEstimateToSheet(); });
   byId('save-json').addEventListener('click', downloadJson);
   byId('load-json-button').addEventListener('click', function () { byId('load-json').click(); });
   byId('load-json').addEventListener('change', function (event) {
@@ -977,6 +1240,7 @@
   byId('reset-estimate').addEventListener('click', resetForm);
 
   setInitialValues();
+  initializeNewRecord();
   updatePaymentFields();
   addLineItem();
   updateClassification();

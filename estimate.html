@@ -49,6 +49,18 @@
             <label>案件名<input id="project-name" name="projectName" type="text" placeholder="例：車両用カバー CAD再構築"></label>
             <label>見積有効期限<input id="valid-until" name="validUntil" type="date"></label>
             <label>希望納期<input id="delivery" name="delivery" type="text" placeholder="例：正式発注後4週間"></label>
+            <label>案件ステータス
+              <select id="record-status" name="recordStatus">
+                <option>未対応</option>
+                <option>確認中</option>
+                <option selected>見積作成中</option>
+                <option>見積提出済み</option>
+                <option>受注</option>
+                <option>保留</option>
+                <option>失注</option>
+                <option>完了</option>
+              </select>
+            </label>
           </div>
         </section>
 
@@ -226,6 +238,8 @@
         </section>
 
         <div class="tool-actions">
+          <button id="save-to-sheet" class="button sheet-save-button" type="button">案件をスプレッドシートに保存</button>
+          <p id="sheet-save-status" class="sheet-save-status" role="status" aria-live="polite" data-state="unsaved">未保存</p>
           <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
           <button id="copy-summary" class="button secondary-button" type="button">見積内容をテキストでコピー</button>
           <button id="save-json" class="button secondary-button" type="button">編集データを保存</button>
