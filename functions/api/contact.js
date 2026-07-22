@@ -1,3 +1,5 @@
+import { createInquiryRecord, saveInquiryRecord } from './save-inquiry.js';
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 20 * 1024 * 1024;
 const MAX_FILE_COUNT = 10;
@@ -80,7 +82,7 @@ function safeFileName(name) {
   return cleaned.slice(-120) || 'attachment';
 }
 
-async function sendNotification(env, inquiry) {
+async function sendNotification(env, inquiry, fetchImpl = fetch) {
   const body = [
     `受付番号: ${inquiry.inquiryId}`,
     `受付日時: ${inquiry.receivedAt}`,
@@ -98,7 +100,7 @@ async function sendNotification(env, inquiry) {
     inquiry.message
   ].join('\n');
 
-  const response = await fetch('https://api.resend.com/emails', {
+  const response = await fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
@@ -116,8 +118,9 @@ async function sendNotification(env, inquiry) {
   if (!response.ok) throw new Error(`Notification failed: ${response.status}`);
 }
 
-export async function onRequest(context) {
+export async function handleContactRequest(context, dependencies = {}) {
   const { request, env } = context;
+  const fetchImpl = dependencies.fetch || fetch;
   if (request.method !== 'POST') return json({ ok: false, message: 'Method not allowed.' }, 405);
 
   const requiredBindings = ['CONTACT_DB', 'CONTACT_RATE_LIMIT', 'RESEND_API_KEY', 'CONTACT_NOTIFICATION_TO', 'CONTACT_FROM', 'ALLOWED_ORIGIN'];
@@ -199,13 +202,17 @@ export async function onRequest(context) {
       .bind(JSON.stringify(attachments), 'received', inquiryId)
       .run();
 
-    await sendNotification(env, { ...inquiry, inquiryId, receivedAt, attachments });
+    await sendNotification(env, { ...inquiry, inquiryId, receivedAt, attachments }, fetchImpl);
     await env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2').bind('notified', inquiryId).run();
   } catch (error) {
     await env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2').bind('notification_or_file_error', inquiryId).run();
-    console.error(error);
+    console.error('contact_processing_failed');
     return json({ ok: false, inquiryId, message: `受付番号 ${inquiryId} で保存しましたが、通知処理を完了できませんでした。` }, 502);
   }
+
+  const sheetRecord = createInquiryRecord({ ...inquiry, attachments }, { now: receivedAt });
+  const sheetResult = await saveInquiryRecord(sheetRecord, env, fetchImpl);
+  if (!sheetResult.ok) console.error('inquiry_sheet_save_failed');
 
   if ((request.headers.get('Accept') || '').includes('text/html')) {
     const url = new URL('/contact-complete.html', request.url);
@@ -213,4 +220,8 @@ export async function onRequest(context) {
     return Response.redirect(url.toString(), 303);
   }
   return json({ ok: true, inquiryId });
+}
+
+export function onRequest(context) {
+  return handleContactRequest(context);
 }
