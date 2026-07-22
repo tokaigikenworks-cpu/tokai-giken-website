@@ -77,7 +77,9 @@ const originalConsoleError = console.error;
 const errors = [];
 console.error = (message) => errors.push(message);
 try {
-  const sheetFailure = await handleContactRequest({ request: formRequest(), env: { ...env, CONTACT_DB: fakeDatabase() } }, {
+  const envWithoutRateLimit = { ...env, CONTACT_DB: fakeDatabase() };
+  delete envWithoutRateLimit.CONTACT_RATE_LIMIT;
+  const sheetFailure = await handleContactRequest({ request: formRequest(), env: envWithoutRateLimit }, {
     fetch: async (url) => {
       if (url === 'https://api.resend.com/emails') return new Response('{}', { status: 200 });
       return new Response('{}', { status: 500 });

@@ -123,11 +123,13 @@ export async function handleContactRequest(context, dependencies = {}) {
   const fetchImpl = dependencies.fetch || fetch;
   if (request.method !== 'POST') return json({ ok: false, message: 'Method not allowed.' }, 405);
 
-  const requiredBindings = ['CONTACT_DB', 'CONTACT_RATE_LIMIT', 'RESEND_API_KEY', 'CONTACT_NOTIFICATION_TO', 'CONTACT_FROM', 'ALLOWED_ORIGIN'];
+  const requiredBindings = ['CONTACT_DB', 'RESEND_API_KEY', 'CONTACT_NOTIFICATION_TO', 'CONTACT_FROM', 'ALLOWED_ORIGIN'];
   const missing = requiredBindings.filter((name) => !env[name]);
   if (missing.length) return json({ ok: false, message: '問い合わせ受付の本番設定が完了していません。' }, 503);
   if (!allowedOrigin(request, env.ALLOWED_ORIGIN)) return json({ ok: false, message: '送信元を確認できませんでした。' }, 403);
-  if (!(await enforceRateLimit(request, env.CONTACT_RATE_LIMIT))) return json({ ok: false, message: '送信回数が上限に達しました。時間をおいて再度お試しください。' }, 429);
+  if (env.CONTACT_RATE_LIMIT && !(await enforceRateLimit(request, env.CONTACT_RATE_LIMIT))) {
+    return json({ ok: false, message: '送信回数が上限に達しました。時間をおいて再度お試しください。' }, 429);
+  }
 
   let form;
   try {
