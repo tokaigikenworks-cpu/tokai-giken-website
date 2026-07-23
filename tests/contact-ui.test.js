@@ -30,6 +30,7 @@ const input = form.querySelector('[name="name"]');
 const select = form.querySelector('[name="data"]');
 const textarea = form.querySelector('[name="message"]');
 const submit = form.querySelector('.submit');
+const status = form.querySelector('.form-status');
 
 const enter = (target) => {
   const event = new dom.window.KeyboardEvent('keydown', {
@@ -45,6 +46,12 @@ assert.equal(enter(input), true, 'input Enter must be prevented');
 assert.equal(enter(select), true, 'select Enter must be prevented');
 assert.equal(enter(textarea), false, 'textarea Enter must remain available');
 assert.equal(fetchCalls, 0, 'Enter must not submit the form');
+
+submit.click();
+assert.equal(fetchCalls, 0, 'invalid form must not submit');
+assert.match(status.textContent, /必須項目/);
+assert.equal(status.classList.contains('error'), true);
+assert.equal(submit.disabled, false);
 
 form.querySelector('[name="name"]').value = 'テスト太郎';
 form.querySelector('[name="email"]').value = 'test@example.com';
