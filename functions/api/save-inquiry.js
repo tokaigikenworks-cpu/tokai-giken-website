@@ -48,6 +48,7 @@ export function createInquiryRecord(inquiry, options = {}) {
 
   return {
     recordId,
+    inquiryId: text(inquiry.inquiryId, 100),
     createdAt: now,
     updatedAt: now,
     pdfIssuedAt: '',

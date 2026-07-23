@@ -28,6 +28,27 @@
       <h1>トカイ技研の見積ツール</h1>
     </section>
 
+    <section class="pending-queue-panel" aria-labelledby="pending-queue-heading">
+      <div class="pending-queue-heading">
+        <div>
+          <p class="eyebrow">INQUIRY QUEUE</p>
+          <h2 id="pending-queue-heading">未対応案件</h2>
+        </div>
+        <strong id="pending-count" class="pending-count" aria-live="polite">未対応：確認中</strong>
+        <button id="load-pending-inquiries" class="button pending-load-button" type="button">未対応案件を読み込む</button>
+      </div>
+      <p id="pending-queue-status" class="pending-queue-status" role="status" aria-live="polite">未対応案件を確認しています。</p>
+      <div id="pending-inquiry-list" class="pending-inquiry-list" aria-live="polite"></div>
+      <div id="active-inquiry-banner" class="active-inquiry-banner" hidden>
+        <div>
+          <small>現在処理中の受付番号</small>
+          <strong id="active-inquiry-id">—</strong>
+          <span id="active-inquiry-client"></span>
+        </div>
+        <button id="open-next-pending" class="button secondary-button" type="button" hidden>次の未対応案件を開く</button>
+      </div>
+    </section>
+
     <section class="estimate-workspace" aria-label="見積作成ワークスペース">
       <form id="estimate-form" class="estimate-editor" autocomplete="off">
         <section class="tool-panel" aria-labelledby="project-heading">
@@ -75,6 +96,20 @@
           <label class="full-label">問い合わせ内容
             <textarea id="inquiry-text" name="inquiryText" rows="7" placeholder="メール・DM・フォーム回答などを貼り付けてください。内容は案件判定の補助に使います。"></textarea>
           </label>
+          <div id="imported-inquiry-details" class="imported-inquiry-details" hidden>
+            <p>問い合わせフォームから取り込んだ情報</p>
+            <dl>
+              <div><dt>受付番号</dt><dd id="imported-inquiry-id">—</dd></div>
+              <div><dt>氏名</dt><dd id="imported-client-name">—</dd></div>
+              <div><dt>会社名</dt><dd id="imported-company-name">—</dd></div>
+              <div><dt>対象物</dt><dd id="imported-project-name">—</dd></div>
+              <div><dt>車種・型式</dt><dd id="imported-vehicle-model">—</dd></div>
+              <div><dt>予算感</dt><dd id="imported-budget-range">—</dd></div>
+              <div><dt>3Dデータ</dt><dd id="imported-source-type">—</dd></div>
+              <div><dt>添付</dt><dd id="imported-attachment-count">0件</dd></div>
+            </dl>
+            <ul id="imported-attachment-list" class="imported-attachment-list"></ul>
+          </div>
           <label id="capture-zone" class="capture-zone" tabindex="0">
             <input id="source-images" type="file" accept="image/*" multiple>
             <strong>スクリーンショットを選択／貼り付け</strong>

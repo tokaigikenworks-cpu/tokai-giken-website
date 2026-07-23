@@ -307,6 +307,10 @@
   let pdfIssuedAt = '';
   let recordStatusManuallyChanged = false;
   let sheetRevision = 0;
+  let pendingInquiries = [];
+  let pendingInquiryCount = 0;
+  let pendingQueueLoading = false;
+  let activeInquiryRecord = null;
 
   const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
@@ -329,6 +333,258 @@
     status.textContent = message;
   }
 
+  function pendingReceiptNumber(record) {
+    return String(record && (record.inquiryId || record.receiptNumber) || '').trim()
+      || ('ID-' + String(record && record.recordId || '').slice(0, 8));
+  }
+
+  function formatPendingDate(value) {
+    const date = new Date(String(value || ''));
+    if (Number.isNaN(date.getTime())) return '日時不明';
+    return date.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function setPendingQueueStatus(message, state) {
+    const status = byId('pending-queue-status');
+    status.textContent = message;
+    status.dataset.state = state || '';
+  }
+
+  function updatePendingCount() {
+    const badge = byId('pending-count');
+    badge.textContent = '未対応：' + pendingInquiryCount + '件';
+    badge.dataset.state = pendingInquiryCount > 0 ? 'remaining' : 'empty';
+  }
+
+  function appendText(parent, tagName, value, className) {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    element.textContent = value;
+    parent.appendChild(element);
+    return element;
+  }
+
+  function renderPendingInquiries() {
+    const list = byId('pending-inquiry-list');
+    list.replaceChildren();
+    updatePendingCount();
+
+    if (!pendingInquiries.length) {
+      if (!pendingQueueLoading) setPendingQueueStatus('未対応案件はありません。', 'empty');
+      return;
+    }
+
+    pendingInquiries.forEach(function (record) {
+      const card = document.createElement('article');
+      card.className = 'pending-inquiry-card';
+      card.dataset.recordId = record.recordId;
+
+      const receipt = document.createElement('div');
+      appendText(receipt, 'small', '受付番号 / 受付日時');
+      appendText(receipt, 'strong', pendingReceiptNumber(record));
+      appendText(receipt, 'span', formatPendingDate(record.inquiryReceivedAt || record.createdAt));
+
+      const client = document.createElement('div');
+      appendText(client, 'small', '氏名 / 会社名');
+      appendText(client, 'strong', record.clientName || '氏名未入力');
+      appendText(client, 'span', record.companyName || '会社名なし');
+
+      const summary = document.createElement('div');
+      appendText(summary, 'small', '相談概要');
+      appendText(summary, 'span', record.inquiryText || '相談内容未入力', 'pending-inquiry-summary');
+
+      const startButton = document.createElement('button');
+      startButton.type = 'button';
+      startButton.className = 'button pending-start-button';
+      startButton.textContent = activeInquiryRecord && activeInquiryRecord.recordId === record.recordId ? '処理中' : '見積を開始';
+      startButton.disabled = Boolean(activeInquiryRecord && activeInquiryRecord.recordId === record.recordId);
+      startButton.addEventListener('click', function () { void claimPendingInquiry(record.recordId); });
+
+      card.append(receipt, client, summary, startButton);
+      list.appendChild(card);
+    });
+  }
+
+  async function loadPendingInquiries(options) {
+    const settings = options || {};
+    if (pendingQueueLoading) return pendingInquiries;
+    const button = byId('load-pending-inquiries');
+    pendingQueueLoading = true;
+    button.disabled = true;
+    if (!settings.silent) setPendingQueueStatus('未対応案件を読み込んでいます。', 'loading');
+    try {
+      const response = await fetch('/api/pending-inquiries', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin'
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok || result.ok !== true || !Array.isArray(result.items)) {
+        if (response.status === 403) throw new Error('Cloudflare Accessで認証後に未対応案件を読み込めます。');
+        throw new Error('未対応案件を読み込めませんでした。');
+      }
+      pendingInquiries = result.items;
+      pendingInquiryCount = Number.isFinite(Number(result.count)) ? Number(result.count) : pendingInquiries.length;
+      renderPendingInquiries();
+      if (pendingInquiryCount > 0) {
+        setPendingQueueStatus('未対応案件が' + pendingInquiryCount + '件あります。受付日時の古い順に表示しています。', 'remaining');
+      } else {
+        setPendingQueueStatus('未対応案件はありません。', 'empty');
+      }
+      return pendingInquiries;
+    } catch (error) {
+      setPendingQueueStatus(error.message || '未対応案件を読み込めませんでした。', 'error');
+      return pendingInquiries;
+    } finally {
+      pendingQueueLoading = false;
+      button.disabled = false;
+    }
+  }
+
+  function setSelectValueIfAllowed(field, value, fallback) {
+    const normalized = String(value == null || value === '' ? (fallback == null ? '' : fallback) : value);
+    if (!field) return;
+    if (Array.from(field.options).some(function (option) { return option.value === normalized; })) {
+      field.value = normalized;
+    }
+  }
+
+  function sourceTypeLabel(value) {
+    if (value === 'cad') return 'あり';
+    if (value === 'none') return 'なし';
+    return '未確認';
+  }
+
+  function renderImportedInquiry(record) {
+    const details = byId('imported-inquiry-details');
+    if (!record) {
+      details.hidden = true;
+      byId('active-inquiry-banner').hidden = true;
+      byId('open-next-pending').hidden = true;
+      return;
+    }
+    details.hidden = false;
+    setText('imported-inquiry-id', pendingReceiptNumber(record));
+    setText('imported-client-name', record.clientName || '未入力');
+    setText('imported-company-name', record.companyName || '未入力');
+    setText('imported-project-name', record.projectName || '未入力');
+    setText('imported-vehicle-model', record.vehicleModel || '未入力');
+    setText('imported-budget-range', record.budgetRange || '未入力');
+    setText('imported-source-type', sourceTypeLabel(record.sourceType));
+    setText('imported-attachment-count', String(record.attachmentCount || 0) + '件');
+
+    const attachments = byId('imported-attachment-list');
+    attachments.replaceChildren();
+    const names = Array.isArray(record.attachmentNames) ? record.attachmentNames : [];
+    const references = Array.isArray(record.attachmentReferences) ? record.attachmentReferences : [];
+    const length = Math.max(names.length, references.length);
+    for (let index = 0; index < length; index += 1) {
+      const name = names[index] || '添付ファイル' + (index + 1);
+      const reference = references[index] ? ' / R2: ' + references[index] : '';
+      appendText(attachments, 'li', name + reference);
+    }
+
+    const banner = byId('active-inquiry-banner');
+    banner.hidden = false;
+    setText('active-inquiry-id', pendingReceiptNumber(record));
+    setText('active-inquiry-client', [record.clientName, record.companyName].filter(Boolean).join(' / '));
+  }
+
+  function applyClaimedInquiry(record) {
+    activeInquiryRecord = record;
+    recordId = record.recordId;
+    recordCreatedAt = record.createdAt || record.inquiryReceivedAt || currentTimestamp();
+    lastSheetSavedAt = '';
+    pdfIssuedAt = '';
+    recordStatusManuallyChanged = false;
+
+    fields.clientName.value = record.companyName || record.clientName || '';
+    fields.honorific.value = record.companyName ? '御中' : '様';
+    fields.projectName.value = record.projectName || '問い合わせ案件';
+    fields.delivery.value = record.delivery || '';
+    fields.inquiryText.value = record.inquiryText || '';
+    setSelectValueIfAllowed(fields.purpose, record.purpose, '');
+    setSelectValueIfAllowed(fields.sourceType, record.sourceType, '');
+    setSelectValueIfAllowed(fields.fitting, record.fitting || (record.vehicleModel ? 'known' : ''), 'none');
+    setSelectValueIfAllowed(fields.deliverable, record.deliverable, '');
+    setSelectValueIfAllowed(fields.safety, record.safety, 'unknown');
+    setSelectValueIfAllowed(fields.rush, record.rush, 'normal');
+    fields.recordStatus.value = '確認中';
+
+    clearApiClassification();
+    itemContainer.replaceChildren();
+    addLineItem();
+    paymentManuallyChanged = false;
+    fields.paymentType.value = 'prepaid';
+    fields.customPayment.value = '';
+    updateClassification();
+    updatePaymentFields();
+    renderImportedInquiry(record);
+    pendingInquiries = pendingInquiries.filter(function (item) { return item.recordId !== record.recordId; });
+    pendingInquiryCount = Math.max(0, pendingInquiryCount - 1);
+    renderPendingInquiries();
+    markSheetDirty();
+    updatePreview();
+    setStatus(pendingReceiptNumber(record) + 'を取り込みました。ローカル判定とAPI判定を実行できます。');
+    byId('open-next-pending').hidden = true;
+  }
+
+  async function claimPendingInquiry(recordIdToClaim) {
+    if (activeInquiryRecord && activeInquiryRecord.recordId !== recordIdToClaim) {
+      if (!window.confirm('現在の案件から別の未対応案件へ切り替えますか？未保存の変更がある場合は先に保存してください。')) return false;
+    }
+    const buttons = Array.from(document.querySelectorAll('.pending-start-button'));
+    buttons.forEach(function (button) { button.disabled = true; });
+    setPendingQueueStatus('案件を確認中へ更新しています。', 'loading');
+    try {
+      const response = await fetch('/api/claim-inquiry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ recordId: recordIdToClaim })
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (response.status === 409 || result.error === 'already_claimed') {
+        await loadPendingInquiries({ silent: true });
+        throw new Error('この案件は別の画面ですでに処理を開始しています。');
+      }
+      if (!response.ok || result.ok !== true || !result.record) {
+        throw new Error('案件を開始できませんでした。');
+      }
+      applyClaimedInquiry(result.record);
+      setPendingQueueStatus('受付番号' + pendingReceiptNumber(result.record) + 'を確認中へ更新しました。', 'success');
+      return true;
+    } catch (error) {
+      setPendingQueueStatus(error.message || '案件を開始できませんでした。', 'error');
+      renderPendingInquiries();
+      return false;
+    }
+  }
+
+  function showNextPendingAction() {
+    if (!activeInquiryRecord) return;
+    byId('open-next-pending').hidden = false;
+  }
+
+  async function openNextPendingInquiry() {
+    await loadPendingInquiries({ silent: true });
+    if (!pendingInquiries.length) {
+      byId('open-next-pending').hidden = true;
+      setPendingQueueStatus('未対応案件はありません。', 'empty');
+      return;
+    }
+    await claimPendingInquiry(pendingInquiries[0].recordId);
+  }
+
   function markSheetDirty() {
     sheetRevision += 1;
     setSheetSaveStatus('unsaved', '未保存');
@@ -341,6 +597,8 @@
     pdfIssuedAt = '';
     recordStatusManuallyChanged = false;
     fields.recordStatus.value = fields.quoteNumber.value.trim() ? '見積作成中' : '未対応';
+    activeInquiryRecord = null;
+    renderImportedInquiry(null);
     sheetRevision += 1;
     setSheetSaveStatus('unsaved', '未保存');
   }
@@ -411,6 +669,7 @@
     markSheetDirty();
     updatePreview();
     void saveEstimateToSheet({ pdf: true });
+    showNextPendingAction();
     const originalTitle = document.title;
     let restored = false;
     const restoreTitle = function () {
@@ -841,27 +1100,55 @@
       apiModel: classification.apiModel,
       apiResponseMs: classification.apiResponseMs,
       apiTokens: classification.apiTokens,
-      apiAdopted: classification.apiAdopted
+      apiAdopted: classification.apiAdopted,
+      sourceInquiry: activeInquiryRecord ? {
+        recordId: activeInquiryRecord.recordId,
+        inquiryId: activeInquiryRecord.inquiryId || '',
+        createdAt: activeInquiryRecord.createdAt || '',
+        updatedAt: activeInquiryRecord.updatedAt || '',
+        inquiryReceivedAt: activeInquiryRecord.inquiryReceivedAt || '',
+        clientName: activeInquiryRecord.clientName || '',
+        companyName: activeInquiryRecord.companyName || '',
+        email: activeInquiryRecord.email || '',
+        projectName: activeInquiryRecord.projectName || '',
+        inquiryText: activeInquiryRecord.inquiryText || '',
+        delivery: activeInquiryRecord.delivery || '',
+        notes: activeInquiryRecord.notes || '',
+        vehicleModel: activeInquiryRecord.vehicleModel || '',
+        budgetRange: activeInquiryRecord.budgetRange || '',
+        attachmentCount: Number(activeInquiryRecord.attachmentCount) || 0,
+        attachmentNames: Array.isArray(activeInquiryRecord.attachmentNames) ? activeInquiryRecord.attachmentNames.slice() : [],
+        attachmentReferences: Array.isArray(activeInquiryRecord.attachmentReferences) ? activeInquiryRecord.attachmentReferences.slice() : [],
+        attachmentMetadata: Array.isArray(activeInquiryRecord.attachmentMetadata) ? activeInquiryRecord.attachmentMetadata.slice() : [],
+        sourcePage: activeInquiryRecord.sourcePage || ''
+      } : null
     };
   }
 
   function buildSheetRecord() {
     const data = readData();
     const totals = calculateTotals(data.items, data.taxRate);
-    return {
+    return Object.assign({}, data.sourceInquiry || {}, {
       recordId: data.recordId,
+      inquiryId: data.sourceInquiry && data.sourceInquiry.inquiryId || '',
       createdAt: data.recordCreatedAt,
       pdfIssuedAt: data.pdfIssuedAt,
       status: data.recordStatus,
       quoteNumber: data.quoteNumber,
       issueDate: data.issueDate,
-      clientName: data.clientName,
+      clientName: data.sourceInquiry && data.sourceInquiry.clientName || data.clientName,
+      quoteClientName: data.clientName,
       honorific: data.honorific,
       projectName: data.projectName,
-      inquiryText: data.inquiryText,
-      delivery: data.delivery,
+      originalProjectName: data.sourceInquiry && data.sourceInquiry.projectName || '',
+      estimateProjectName: data.projectName,
+      inquiryText: data.sourceInquiry && data.sourceInquiry.inquiryText || data.inquiryText,
+      estimateInquiryText: data.inquiryText,
+      delivery: data.sourceInquiry && data.sourceInquiry.delivery || data.delivery,
+      estimateDelivery: data.delivery,
       validUntil: data.validUntil,
-      notes: data.notes,
+      notes: data.sourceInquiry && data.sourceInquiry.notes || data.notes,
+      estimateNotes: data.notes,
       purpose: data.purpose,
       sourceType: data.sourceType,
       fitting: data.fitting,
@@ -888,8 +1175,18 @@
       customPayment: data.customPayment,
       payment: data.payment,
       paymentNote: data.paymentNote,
-      outputFormat: data.outputFormat
-    };
+      outputFormat: data.outputFormat,
+      companyName: data.sourceInquiry && data.sourceInquiry.companyName || '',
+      email: data.sourceInquiry && data.sourceInquiry.email || '',
+      vehicleModel: data.sourceInquiry && data.sourceInquiry.vehicleModel || '',
+      budgetRange: data.sourceInquiry && data.sourceInquiry.budgetRange || '',
+      attachmentCount: data.sourceInquiry && data.sourceInquiry.attachmentCount || 0,
+      attachmentNames: data.sourceInquiry && data.sourceInquiry.attachmentNames || [],
+      attachmentReferences: data.sourceInquiry && data.sourceInquiry.attachmentReferences || [],
+      attachmentMetadata: data.sourceInquiry && data.sourceInquiry.attachmentMetadata || [],
+      sourcePage: data.sourceInquiry && data.sourceInquiry.sourcePage || '',
+      inquiryReceivedAt: data.sourceInquiry && data.sourceInquiry.inquiryReceivedAt || ''
+    });
   }
 
   async function saveEstimateToSheet(options) {
@@ -918,6 +1215,8 @@
         setSheetSaveStatus('unsaved', '未保存（保存開始後に変更があります）');
       }
       if (settings.pdf) setStatus('PDF発行情報をスプレッドシートへ保存しました');
+      showNextPendingAction();
+      void loadPendingInquiries({ silent: true });
       return true;
     } catch (error) {
       setSheetSaveStatus('error', '保存失敗');
@@ -1114,6 +1413,9 @@
     recordCreatedAt = String(data.recordCreatedAt || data.createdAt || '').trim() || currentTimestamp();
     lastSheetSavedAt = String(data.lastSheetSavedAt || '').trim();
     pdfIssuedAt = String(data.pdfIssuedAt || '').trim();
+    activeInquiryRecord = data.sourceInquiry && typeof data.sourceInquiry === 'object'
+      ? Object.assign({}, data.sourceInquiry, { recordId })
+      : null;
     quoteNumberIsAutomatic = !String(data.quoteNumber || '').trim();
     issuedQuoteNumber = '';
     clearApiClassification();
@@ -1137,6 +1439,7 @@
     updateClassification();
     restoreSavedApiComparison(data);
     updateClassification();
+    renderImportedInquiry(activeInquiryRecord);
     if (lastSheetSavedAt) {
       setSheetSaveStatus('saved', '保存済み　最終保存日時：' + lastSheetSavedAt);
     } else {
@@ -1220,6 +1523,8 @@
   });
   byId('copy-summary').addEventListener('click', copySummary);
   byId('save-to-sheet').addEventListener('click', function () { void saveEstimateToSheet(); });
+  byId('load-pending-inquiries').addEventListener('click', function () { void loadPendingInquiries(); });
+  byId('open-next-pending').addEventListener('click', function () { void openNextPendingInquiry(); });
   byId('save-json').addEventListener('click', downloadJson);
   byId('load-json-button').addEventListener('click', function () { byId('load-json').click(); });
   byId('load-json').addEventListener('change', function (event) {
@@ -1245,4 +1550,5 @@
   addLineItem();
   updateClassification();
   updatePreview();
+  void loadPendingInquiries();
 })(typeof window !== 'undefined' ? window : globalThis);

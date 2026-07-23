@@ -72,7 +72,8 @@ const success = await handleContactRequest({
   }
 }, { fetch: successFetch });
 assert.equal(success.status, 200);
-assert.equal((await success.json()).ok, true);
+const successResult = await success.json();
+assert.equal(successResult.ok, true);
 assert.deepEqual(order, ['email', 'sheet']);
 assert.match(success.headers.get('Server-Timing'), /d1;dur=/);
 assert.match(success.headers.get('Server-Timing'), /email;dur=/);
@@ -82,6 +83,7 @@ assert.equal(sheetPayload.action, 'saveInquiry');
 assert.equal(sheetPayload.environment, 'preview');
 assert.equal(sheetPayload.record.status, '未対応');
 assert.equal(sheetPayload.record.clientName, 'テスト太郎');
+assert.equal(sheetPayload.record.inquiryId, successResult.inquiryId);
 assert.match(sheetPayload.record.recordId, /^[0-9a-f-]{36}$/i);
 
 let releaseSlowSheet;

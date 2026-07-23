@@ -46,9 +46,28 @@ APIキーや通知先はHTML・JavaScriptへ記載しないでください。
 
 Apps Script側は既存の見積保存処理と共存させ、`saveInquiry`を受け付ける必要があります。ヘッダー名で列を解決し、次の問い合わせ専用列がない場合は両シートの末尾へ同じ順序で追加してください。
 
-`updatedAt`, `email`, `companyName`, `vehicleModel`, `budgetRange`, `attachmentCount`, `attachmentNames`, `attachmentMetadata`, `sourcePage`, `inquiryReceivedAt`, `itemsJson`, `paymentTerms`, `paymentSupplement`, `deliveryFormat`
+`inquiryId`, `updatedAt`, `email`, `companyName`, `vehicleModel`, `budgetRange`, `attachmentCount`, `attachmentNames`, `attachmentMetadata`, `sourcePage`, `inquiryReceivedAt`, `itemsJson`, `paymentTerms`, `paymentSupplement`, `deliveryFormat`
+
+未対応案件を見積へ取り込んだ後も元の問い合わせ値を保持するため、次の見積編集用列も末尾へ追加してください。
+
+`quoteClientName`, `originalProjectName`, `estimateProjectName`, `estimateInquiryText`, `estimateDelivery`, `estimateNotes`
 
 共有Secretの検証、environmentごとの保存先固定、recordIdによるupsert、個人情報をLoggerへ出力しない設定が必要です。`POST /api/save-inquiry`はサーバー内部用であり、`X-Inquiry-Internal-Secret`に共有Secretがない直接呼び出しを拒否します。
+
+### 見積ツールの未対応案件キュー
+
+見積ツールは`GET /api/pending-inquiries`で未対応案件を古い順に取得し、`POST /api/claim-inquiry`で選択した行を「確認中」へ更新します。ブラウザからGoogle Apps Scriptへは直接接続しません。Apps Scriptへ追加する処理は`docs/apps-script-pending-queue.gs`を参照してください。
+
+氏名・会社名・相談本文を返すため、キューAPIはCloudflare Access JWTを検証します。Previewで次を設定してください。
+
+1. Cloudflare Pagesの`Settings > General > Enable access policy`でPreview deploymentをAccess保護する
+2. Preview環境変数`CF_ACCESS_TEAM_DOMAIN`へAccessのチーム名を登録する（例：`example`）
+3. Preview環境変数`CF_ACCESS_AUD`へAccess ApplicationのAudience (AUD) Tagを登録する
+4. Apps Scriptへ`listPendingInquiries`と`claimInquiry`を追加し、Webアプリを新しいバージョンとして再デプロイする
+
+設定がない場合、未対応案件APIは403を返します。見積フォームのローカル編集、JSON、PDF、既存の保存機能は停止しません。
+
+`claimInquiry`はApps Scriptの`LockService`内でstatusが「未対応」であることを確認してから「確認中」へ変更します。同じ案件を複数画面から開始した場合、先に取得した画面だけが成功し、後続は409になります。
 
 ## 問い合わせデータ
 
