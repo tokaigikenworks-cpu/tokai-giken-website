@@ -16,11 +16,107 @@ if (contactForm) {
   const status = contactForm.querySelector('.form-status');
   const token = contactForm.querySelector('[name="submission_token"]');
   const fileInput = contactForm.querySelector('[name="attachment"]');
+  const selectedFilesPanel = contactForm.querySelector('.selected-files');
+  const selectedFilesSummary = contactForm.querySelector('.selected-files-summary');
+  const selectedFilesList = contactForm.querySelector('.selected-files-list');
+  const clearFilesButton = contactForm.querySelector('.clear-files');
   const maxFileSize = 10 * 1024 * 1024;
   const maxTotalSize = 20 * 1024 * 1024;
   const maxFileCount = 10;
   const submitLabel = submitButton.textContent;
+  let selectedFiles = [];
   let submitting = false;
+
+  const fileKey = (file) => [file.name, file.size, file.type, file.lastModified].join(':');
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const syncFileInput = () => {
+    if (!fileInput || typeof DataTransfer === 'undefined') return;
+    const transfer = new DataTransfer();
+    selectedFiles.forEach((file) => transfer.items.add(file));
+    fileInput.files = transfer.files;
+  };
+
+  const renderSelectedFiles = () => {
+    const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    selectedFilesPanel.hidden = selectedFiles.length === 0;
+    selectedFilesSummary.textContent = `選択済み：${selectedFiles.length}件（合計 ${formatFileSize(totalSize)}）`;
+    selectedFilesList.replaceChildren();
+
+    selectedFiles.forEach((file) => {
+      const item = document.createElement('li');
+      const details = document.createElement('span');
+      const name = document.createElement('span');
+      const size = document.createElement('span');
+      const removeButton = document.createElement('button');
+
+      details.className = 'selected-file-details';
+      name.className = 'selected-file-name';
+      name.textContent = file.name;
+      size.className = 'selected-file-size';
+      size.textContent = formatFileSize(file.size);
+      removeButton.type = 'button';
+      removeButton.className = 'remove-file';
+      removeButton.textContent = '削除';
+      removeButton.setAttribute('aria-label', `${file.name}を削除`);
+      removeButton.addEventListener('click', () => {
+        selectedFiles = selectedFiles.filter((selected) => fileKey(selected) !== fileKey(file));
+        syncFileInput();
+        renderSelectedFiles();
+      });
+
+      details.append(name, size);
+      item.append(details, removeButton);
+      selectedFilesList.append(item);
+    });
+  };
+
+  const showFileLimitError = () => {
+    status.textContent = '添付ファイルは最大10点、1ファイル10MB、合計20MB以内にしてください。';
+    status.className = 'form-status error';
+    status.setAttribute('role', 'alert');
+  };
+
+  fileInput?.addEventListener('change', () => {
+    const additions = [...fileInput.files];
+    const existingKeys = new Set(selectedFiles.map(fileKey));
+    const merged = [...selectedFiles];
+
+    additions.forEach((file) => {
+      const key = fileKey(file);
+      if (!existingKeys.has(key)) {
+        existingKeys.add(key);
+        merged.push(file);
+      }
+    });
+
+    const totalSize = merged.reduce((sum, file) => sum + file.size, 0);
+    if (merged.length > maxFileCount || merged.some((file) => file.size > maxFileSize) || totalSize > maxTotalSize) {
+      showFileLimitError();
+      syncFileInput();
+      return;
+    }
+
+    selectedFiles = merged;
+    syncFileInput();
+    renderSelectedFiles();
+    if (status.classList.contains('error')) {
+      status.textContent = '';
+      status.className = 'form-status';
+      status.setAttribute('role', 'status');
+    }
+  });
+
+  clearFilesButton?.addEventListener('click', () => {
+    selectedFiles = [];
+    syncFileInput();
+    if (fileInput && typeof DataTransfer === 'undefined') fileInput.value = '';
+    renderSelectedFiles();
+  });
 
   const renewToken = () => {
     if (token && crypto.randomUUID) token.value = crypto.randomUUID();
@@ -46,13 +142,10 @@ if (contactForm) {
       return;
     }
 
-    const files = [...(fileInput?.files || [])];
-    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
 
-    if (files.length > maxFileCount || files.some((file) => file.size > maxFileSize) || totalSize > maxTotalSize) {
-      status.textContent = '添付ファイルは最大10点、1ファイル10MB、合計20MB以内にしてください。';
-      status.className = 'form-status error';
-      status.setAttribute('role', 'alert');
+    if (selectedFiles.length > maxFileCount || selectedFiles.some((file) => file.size > maxFileSize) || totalSize > maxTotalSize) {
+      showFileLimitError();
       return;
     }
 
@@ -65,9 +158,12 @@ if (contactForm) {
     status.setAttribute('role', 'status');
 
     try {
+      const requestBody = new FormData(contactForm);
+      requestBody.delete('attachment');
+      selectedFiles.forEach((file) => requestBody.append('attachment', file, file.name));
       const response = await fetch(contactForm.action, {
         method: 'POST',
-        body: new FormData(contactForm),
+        body: requestBody,
         headers: { Accept: 'application/json' }
       });
       const result = await response.json().catch(() => ({}));
