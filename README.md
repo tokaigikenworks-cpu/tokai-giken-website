@@ -38,6 +38,8 @@ APIキーや通知先はHTML・JavaScriptへ記載しないでください。
 
 問い合わせの応答はD1保存とメール通知の完了後に返し、スプレッドシート保存はPages Functionsの`context.waitUntil()`でバックグラウンド実行します。D1とメールの処理時間は個人情報を含まない`Server-Timing`レスポンスヘッダーで確認でき、Sheetsがバックグラウンド処理であることも同ヘッダーへ表示します。
 
+問い合わせフォームはinput／selectでのEnter送信を無効化し、textareaの改行と送信ボタンの明示操作だけを許可します。送信中はボタンを無効化して二重送信を防止します。
+
 ### 問い合わせのスプレッドシート保存
 
 問い合わせメールの送信成功後、`functions/api/contact.js`が`saveInquiry`アクションをGoogle Apps Scriptへ送信します。Previewでは`案件一覧_PREVIEW`、`main`では`案件一覧_PRODUCTION`が選ばれ、ブラウザから環境を指定することはできません。Sheets保存に失敗しても問い合わせ送信は成功として完了します。
