@@ -36,6 +36,8 @@ APIキーや通知先はHTML・JavaScriptへ記載しないでください。
 
 `CONTACT_RATE_LIMIT`はCloudflare Pagesで利用できる環境に限って追加する任意バインディングです。未設定でも問い合わせ受付、メール通知、スプレッドシート保存は動作します。
 
+問い合わせの応答はD1保存とメール通知の完了後に返し、スプレッドシート保存はPages Functionsの`context.waitUntil()`でバックグラウンド実行します。D1とメールの処理時間は個人情報を含まない`Server-Timing`レスポンスヘッダーで確認でき、Sheetsがバックグラウンド処理であることも同ヘッダーへ表示します。
+
 ### 問い合わせのスプレッドシート保存
 
 問い合わせメールの送信成功後、`functions/api/contact.js`が`saveInquiry`アクションをGoogle Apps Scriptへ送信します。Previewでは`案件一覧_PREVIEW`、`main`では`案件一覧_PRODUCTION`が選ばれ、ブラウザから環境を指定することはできません。Sheets保存に失敗しても問い合わせ送信は成功として完了します。

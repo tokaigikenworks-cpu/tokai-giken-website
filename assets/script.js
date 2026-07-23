@@ -19,7 +19,9 @@ if (contactForm) {
   const maxFileSize = 10 * 1024 * 1024;
   const maxTotalSize = 20 * 1024 * 1024;
   const maxFileCount = 10;
+  const submitLabel = submitButton.textContent;
   let submitting = false;
+  let explicitSubmit = false;
 
   const renewToken = () => {
     if (token && crypto.randomUUID) token.value = crypto.randomUUID();
@@ -27,9 +29,27 @@ if (contactForm) {
 
   renewToken();
 
+  contactForm.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement || target === submitButton) return;
+    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+      event.preventDefault();
+    }
+  });
+
+  submitButton.addEventListener('click', () => {
+    if (submitting) return;
+    explicitSubmit = true;
+    queueMicrotask(() => {
+      explicitSubmit = false;
+    });
+  });
+
   contactForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (submitting || !contactForm.reportValidity()) return;
+    if (!explicitSubmit || submitting || !contactForm.reportValidity()) return;
+    explicitSubmit = false;
 
     const files = [...(fileInput?.files || [])];
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
@@ -44,6 +64,7 @@ if (contactForm) {
     submitting = true;
     submitButton.disabled = true;
     submitButton.setAttribute('aria-busy', 'true');
+    submitButton.textContent = '送信中…';
     status.textContent = '送信しています…';
     status.className = 'form-status';
     status.setAttribute('role', 'status');
@@ -69,6 +90,7 @@ if (contactForm) {
       submitting = false;
       submitButton.disabled = false;
       submitButton.removeAttribute('aria-busy');
+      submitButton.textContent = submitLabel;
     }
   });
 }

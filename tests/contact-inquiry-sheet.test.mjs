@@ -63,15 +63,58 @@ const successFetch = async (url, options) => {
   }));
 };
 
-const success = await handleContactRequest({ request: formRequest(), env }, { fetch: successFetch });
+const backgroundTasks = [];
+const success = await handleContactRequest({
+  request: formRequest(),
+  env,
+  waitUntil(task) {
+    backgroundTasks.push(task);
+  }
+}, { fetch: successFetch });
 assert.equal(success.status, 200);
 assert.equal((await success.json()).ok, true);
 assert.deepEqual(order, ['email', 'sheet']);
+assert.match(success.headers.get('Server-Timing'), /d1;dur=/);
+assert.match(success.headers.get('Server-Timing'), /email;dur=/);
+assert.match(success.headers.get('Server-Timing'), /sheets;desc="background"/);
+await Promise.all(backgroundTasks);
 assert.equal(sheetPayload.action, 'saveInquiry');
 assert.equal(sheetPayload.environment, 'preview');
 assert.equal(sheetPayload.record.status, '未対応');
 assert.equal(sheetPayload.record.clientName, 'テスト太郎');
 assert.match(sheetPayload.record.recordId, /^[0-9a-f-]{36}$/i);
+
+let releaseSlowSheet;
+const slowSheet = new Promise((resolve) => {
+  releaseSlowSheet = resolve;
+});
+const slowBackgroundTasks = [];
+const slowStartedAt = performance.now();
+const fastResponse = await handleContactRequest({
+  request: formRequest(),
+  env: { ...env, CONTACT_DB: fakeDatabase() },
+  waitUntil(task) {
+    slowBackgroundTasks.push(task);
+  }
+}, {
+  fetch: async (url, options) => {
+    if (url === 'https://api.resend.com/emails') return new Response('{}', { status: 200 });
+    await slowSheet;
+    const payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      ok: true,
+      action: 'created',
+      recordId: payload.record.recordId,
+      savedAt: '2026-07-23 12:00:00'
+    }));
+  }
+});
+const foregroundMs = performance.now() - slowStartedAt;
+assert.equal(fastResponse.status, 200);
+assert.equal(slowBackgroundTasks.length, 1);
+assert.ok(foregroundMs < 100, `response waited for background Sheets save: ${foregroundMs}ms`);
+releaseSlowSheet();
+await Promise.all(slowBackgroundTasks);
 
 const originalConsoleError = console.error;
 const errors = [];

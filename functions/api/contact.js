@@ -5,6 +5,7 @@ const MAX_TOTAL_SIZE = 20 * 1024 * 1024;
 const MAX_FILE_COUNT = 10;
 const RATE_LIMIT_WINDOW = 10 * 60;
 const RATE_LIMIT_MAX = 5;
+const EMAIL_TIMEOUT_MS = 10000;
 
 const FILE_TYPES = {
   jpg: ['image/jpeg'],
@@ -24,6 +25,22 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
 });
+
+function withServerTiming(response, timings, sheetsBackground) {
+  const headers = new Headers(response.headers);
+  const values = [
+    `d1;dur=${timings.d1.toFixed(1)}`,
+    `email;dur=${timings.email.toFixed(1)}`
+  ];
+  if (sheetsBackground) values.push('sheets;desc="background"');
+  else if (timings.sheets != null) values.push(`sheets;dur=${timings.sheets.toFixed(1)}`);
+  headers.set('Server-Timing', values.join(', '));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
 
 function allowedOrigin(request, configuredOrigins) {
   const origin = request.headers.get('Origin');
@@ -82,7 +99,7 @@ function safeFileName(name) {
   return cleaned.slice(-120) || 'attachment';
 }
 
-async function sendNotification(env, inquiry, fetchImpl = fetch) {
+async function sendNotification(env, inquiry, fetchImpl = fetch, timeoutMs = EMAIL_TIMEOUT_MS) {
   const body = [
     `受付番号: ${inquiry.inquiryId}`,
     `受付日時: ${inquiry.receivedAt}`,
@@ -100,27 +117,43 @@ async function sendNotification(env, inquiry, fetchImpl = fetch) {
     inquiry.message
   ].join('\n');
 
-  const response = await fetchImpl('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: env.CONTACT_FROM,
-      to: env.CONTACT_NOTIFICATION_TO.split(',').map((value) => value.trim()),
-      reply_to: inquiry.email,
-      subject: `【トカイ技研】新しい相談 ${inquiry.inquiryId}`,
-      text: body
-    })
-  });
-
-  if (!response.ok) throw new Error(`Notification failed: ${response.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: env.CONTACT_FROM,
+        to: env.CONTACT_NOTIFICATION_TO.split(',').map((value) => value.trim()),
+        reply_to: inquiry.email,
+        subject: `【トカイ技研】新しい相談 ${inquiry.inquiryId}`,
+        text: body
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Notification failed: ${response.status}`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function handleContactRequest(context, dependencies = {}) {
   const { request, env } = context;
   const fetchImpl = dependencies.fetch || fetch;
+  const now = dependencies.now || (() => performance.now());
+  const timings = { d1: 0, email: 0, sheets: null };
+  const measure = async (name, operation) => {
+    const startedAt = now();
+    try {
+      return await operation();
+    } finally {
+      timings[name] += Math.max(0, now() - startedAt);
+    }
+  };
   if (request.method !== 'POST') return json({ ok: false, message: 'Method not allowed.' }, 405);
 
   const requiredBindings = ['CONTACT_DB', 'RESEND_API_KEY', 'CONTACT_NOTIFICATION_TO', 'CONTACT_FROM', 'ALLOWED_ORIGIN'];
@@ -166,9 +199,9 @@ export async function handleContactRequest(context, dependencies = {}) {
   }
   if (files.length && !env.CONTACT_FILES) return json({ ok: false, message: '添付ファイル受付の本番設定が完了していません。' }, 503);
 
-  const existing = await env.CONTACT_DB.prepare('SELECT inquiry_id, status FROM inquiries WHERE submission_token = ?1')
+  const existing = await measure('d1', () => env.CONTACT_DB.prepare('SELECT inquiry_id, status FROM inquiries WHERE submission_token = ?1')
     .bind(inquiry.submissionToken)
-    .first();
+    .first());
   if (existing) {
     if (existing.status === 'notified') return json({ ok: true, inquiryId: existing.inquiry_id });
     return json({
@@ -181,13 +214,13 @@ export async function handleContactRequest(context, dependencies = {}) {
   const receivedAt = new Date().toISOString();
   const inquiryId = `TG-${receivedAt.slice(0, 10).replaceAll('-', '')}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
-  await env.CONTACT_DB.prepare(`INSERT INTO inquiries (
+  await measure('d1', () => env.CONTACT_DB.prepare(`INSERT INTO inquiries (
     inquiry_id, received_at, submission_token, name, company, email, deadline, message,
     object_name, vehicle, budget, has_3d_data, attachments_json, status
   ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`)
     .bind(inquiryId, receivedAt, inquiry.submissionToken, inquiry.name, inquiry.company, inquiry.email,
       inquiry.deadline, inquiry.message, inquiry.object, inquiry.vehicle, inquiry.budget, inquiry.data, '[]', 'processing')
-    .run();
+    .run());
 
   const attachments = [];
   try {
@@ -200,28 +233,47 @@ export async function handleContactRequest(context, dependencies = {}) {
       attachments.push({ key, name: file.name, type: file.type, size: file.size });
     }
 
-    await env.CONTACT_DB.prepare('UPDATE inquiries SET attachments_json = ?1, status = ?2 WHERE inquiry_id = ?3')
+    await measure('d1', () => env.CONTACT_DB.prepare('UPDATE inquiries SET attachments_json = ?1, status = ?2 WHERE inquiry_id = ?3')
       .bind(JSON.stringify(attachments), 'received', inquiryId)
-      .run();
+      .run());
 
-    await sendNotification(env, { ...inquiry, inquiryId, receivedAt, attachments }, fetchImpl);
-    await env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2').bind('notified', inquiryId).run();
+    await measure('email', () => sendNotification(env, { ...inquiry, inquiryId, receivedAt, attachments }, fetchImpl));
+    await measure('d1', () => env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2')
+      .bind('notified', inquiryId)
+      .run());
   } catch (error) {
-    await env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2').bind('notification_or_file_error', inquiryId).run();
+    await measure('d1', () => env.CONTACT_DB.prepare('UPDATE inquiries SET status = ?1 WHERE inquiry_id = ?2')
+      .bind('notification_or_file_error', inquiryId)
+      .run());
     console.error('contact_processing_failed');
     return json({ ok: false, inquiryId, message: `受付番号 ${inquiryId} で保存しましたが、通知処理を完了できませんでした。` }, 502);
   }
 
   const sheetRecord = createInquiryRecord({ ...inquiry, attachments }, { now: receivedAt });
-  const sheetResult = await saveInquiryRecord(sheetRecord, env, fetchImpl);
-  if (!sheetResult.ok) console.error('inquiry_sheet_save_failed');
+  const sheetTask = (async () => {
+    const startedAt = now();
+    try {
+      const sheetResult = await saveInquiryRecord(sheetRecord, env, fetchImpl);
+      if (!sheetResult.ok) console.error('inquiry_sheet_save_failed');
+    } catch {
+      console.error('inquiry_sheet_save_failed');
+    } finally {
+      timings.sheets = Math.max(0, now() - startedAt);
+    }
+  })();
+  const sheetsBackground = typeof context.waitUntil === 'function';
+  if (sheetsBackground) context.waitUntil(sheetTask);
+  else await sheetTask;
 
+  let response;
   if ((request.headers.get('Accept') || '').includes('text/html')) {
     const url = new URL('/contact-complete.html', request.url);
     url.searchParams.set('id', inquiryId);
-    return Response.redirect(url.toString(), 303);
+    response = Response.redirect(url.toString(), 303);
+  } else {
+    response = json({ ok: true, inquiryId });
   }
-  return json({ ok: true, inquiryId });
+  return withServerTiming(response, timings, sheetsBackground);
 }
 
 export function onRequest(context) {
