@@ -101,6 +101,29 @@ chooseFiles(...tooManyFiles);
 assert.equal(selectedFiles.hidden, true, 'selection over the limit is rejected');
 assert.match(status.textContent, /最大10点/);
 
+const oversizedFile = new dom.window.File(['oversized'], 'oversized.pdf', {
+  type: 'application/pdf',
+  lastModified: 500
+});
+Object.defineProperty(oversizedFile, 'size', { value: (10 * 1024 * 1024) + 1 });
+chooseFiles(oversizedFile);
+assert.equal(selectedFiles.hidden, true, 'a file over 10 MB is rejected');
+assert.match(status.textContent, /1ファイル10MB/);
+
+const totalLimitFiles = [600, 601, 602].map((lastModified, index) => {
+  const file = new dom.window.File([`total-${index}`], `total-${index}.pdf`, {
+    type: 'application/pdf',
+    lastModified
+  });
+  Object.defineProperty(file, 'size', {
+    value: index < 2 ? 10 * 1024 * 1024 : 1
+  });
+  return file;
+});
+chooseFiles(...totalLimitFiles);
+assert.equal(selectedFiles.hidden, true, 'a selection over 20 MB total is rejected');
+assert.match(status.textContent, /合計20MB/);
+
 submit.click();
 assert.equal(fetchCalls, 0, 'invalid form must not submit');
 assert.match(status.textContent, /必須項目/);
