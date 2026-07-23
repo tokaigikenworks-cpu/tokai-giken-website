@@ -21,7 +21,6 @@ if (contactForm) {
   const maxFileCount = 10;
   const submitLabel = submitButton.textContent;
   let submitting = false;
-  let explicitSubmit = false;
 
   const renewToken = () => {
     if (token && crypto.randomUUID) token.value = crypto.randomUUID();
@@ -32,24 +31,20 @@ if (contactForm) {
   contactForm.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     const target = event.target;
-    if (target instanceof HTMLTextAreaElement || target === submitButton) return;
-    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
-      event.preventDefault();
-    }
-  });
-
-  submitButton.addEventListener('click', () => {
-    if (submitting) return;
-    explicitSubmit = true;
-    queueMicrotask(() => {
-      explicitSubmit = false;
-    });
-  });
-
-  contactForm.addEventListener('submit', async (event) => {
+    if (target instanceof HTMLTextAreaElement) return;
     event.preventDefault();
-    if (!explicitSubmit || submitting || !contactForm.reportValidity()) return;
-    explicitSubmit = false;
+  });
+
+  submitButton.addEventListener('click', async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+    if (!contactForm.checkValidity()) {
+      contactForm.reportValidity();
+      status.textContent = '必須項目を入力し、入力内容を確認してください。';
+      status.className = 'form-status error';
+      status.setAttribute('role', 'alert');
+      return;
+    }
 
     const files = [...(fileInput?.files || [])];
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
