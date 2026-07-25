@@ -39,14 +39,28 @@
       </div>
       <p id="pending-queue-status" class="pending-queue-status" role="status" aria-live="polite">未対応案件を確認しています。</p>
       <div id="pending-inquiry-list" class="pending-inquiry-list" aria-live="polite"></div>
-      <div id="active-inquiry-banner" class="active-inquiry-banner" hidden>
+    </section>
+
+    <section class="pending-queue-panel active-queue-panel" aria-labelledby="active-queue-heading">
+      <div class="pending-queue-heading">
         <div>
-          <small>現在処理中の受付番号</small>
-          <strong id="active-inquiry-id">—</strong>
-          <span id="active-inquiry-client"></span>
+          <p class="eyebrow">ACTIVE ESTIMATES</p>
+          <h2 id="active-queue-heading">作業中案件</h2>
         </div>
-        <button id="open-next-pending" class="button secondary-button" type="button" hidden>次の未対応案件を開く</button>
+        <strong id="active-count" class="pending-count active-count" aria-live="polite">作業中：確認中</strong>
+        <button id="load-active-inquiries" class="button pending-load-button" type="button">作業中案件を読み込む</button>
       </div>
+      <p id="active-queue-status" class="pending-queue-status" role="status" aria-live="polite">作業中案件を確認しています。</p>
+      <div id="active-inquiry-list" class="pending-inquiry-list active-inquiry-list" aria-live="polite"></div>
+    </section>
+
+    <section id="active-inquiry-banner" class="active-inquiry-banner current-inquiry-panel" aria-label="現在処理中の案件" hidden>
+      <div>
+        <small>現在作業中の受付番号</small>
+        <strong id="active-inquiry-id">—</strong>
+        <span id="active-inquiry-client"></span>
+      </div>
+      <button id="open-next-pending" class="button secondary-button" type="button" hidden>次の未対応案件を開く</button>
     </section>
 
     <section class="estimate-workspace" aria-label="見積作成ワークスペース">
@@ -273,7 +287,8 @@
         </section>
 
         <div class="tool-actions">
-          <button id="save-to-sheet" class="button sheet-save-button" type="button">案件をスプレッドシートに保存</button>
+          <button id="save-to-sheet" class="button sheet-save-button" type="button">見積内容を途中保存</button>
+          <small class="sheet-save-help">同じ案件の行へ上書き保存し、後から作業を再開できます。</small>
           <p id="sheet-save-status" class="sheet-save-status" role="status" aria-live="polite" data-state="unsaved">未保存</p>
           <button id="print-quote" class="button primary" type="submit">印刷・PDF保存</button>
           <button id="copy-summary" class="button secondary-button" type="button">見積内容をテキストでコピー</button>

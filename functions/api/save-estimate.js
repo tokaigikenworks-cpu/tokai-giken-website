@@ -69,6 +69,13 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
     } catch (error) {
       return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
     }
+    if (result && result.ok === false && result.error === 'update_conflict') {
+      return jsonResponse({
+        ok: false,
+        error: 'update_conflict',
+        latestUpdatedAt: String(result.latestUpdatedAt || '')
+      }, 409);
+    }
     if (!validGoogleResponse(result, recordId)) {
       return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
     }

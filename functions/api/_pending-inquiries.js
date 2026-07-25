@@ -163,6 +163,80 @@ export function normalizePendingRecord(record) {
   };
 }
 
+function jsonList(value, maxItems = 100) {
+  if (Array.isArray(value)) return value.slice(0, maxItems);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.slice(0, maxItems) : [];
+  } catch {
+    return [];
+  }
+}
+
+function numberOrEmpty(value) {
+  if (value === '' || value == null) return '';
+  return Number.isFinite(Number(value)) ? Number(value) : '';
+}
+
+export function normalizeActiveRecord(record) {
+  const base = normalizePendingRecord(record);
+  if (!base) return null;
+  return {
+    ...base,
+    quoteNumber: text(record.quoteNumber, 100),
+    estimateProjectName: text(record.estimateProjectName || record.projectName, 200),
+    updatedAt: text(record.updatedAt || record.lastSheetSavedAt, 50),
+    attachmentCount: Number.isFinite(Number(record.attachmentCount)) ? Math.max(0, Number(record.attachmentCount)) : base.attachmentCount
+  };
+}
+
+export function normalizeLoadedRecord(record) {
+  const base = normalizeActiveRecord(record);
+  if (!base) return null;
+  const items = jsonList(record.items || record.itemsJson, 200).map((item) => ({
+    description: text(item && (item.description || item.name || item.content), 500),
+    quantity: numberOrEmpty(item && (item.quantity ?? item.qty)),
+    unit: text(item && item.unit, 50),
+    price: numberOrEmpty(item && (item.price ?? item.unitPrice))
+  }));
+  return {
+    ...base,
+    honorific: text(record.honorific, 20),
+    originalProjectName: text(record.originalProjectName, 200),
+    estimateInquiryText: text(record.estimateInquiryText || record.inquiryText, 10000),
+    estimateDelivery: text(record.estimateDelivery || record.delivery, 200),
+    validUntil: text(record.validUntil, 50),
+    estimateNotes: text(record.estimateNotes || record.notes, 10000),
+    issueDate: text(record.issueDate, 50),
+    localClass: text(record.localClass, 10),
+    localReason: text(record.localReason, 5000),
+    apiClass: text(record.apiClass, 10),
+    comparisonResult: text(record.comparisonResult, 50),
+    apiConfidence: numberOrEmpty(record.apiConfidence),
+    apiReason: text(record.apiReason, 5000),
+    apiWarnings: stringList(record.apiWarnings, 50, 1000),
+    finalClass: text(record.finalClass, 10),
+    apiModel: text(record.apiModel, 100),
+    apiResponseMs: numberOrEmpty(record.apiResponseMs),
+    apiTokens: numberOrEmpty(record.apiTokens),
+    apiAdopted: record.apiAdopted === true || String(record.apiAdopted).toLowerCase() === 'true',
+    items,
+    subtotal: numberOrEmpty(record.subtotal),
+    taxRate: numberOrEmpty(record.taxRate),
+    taxAmount: numberOrEmpty(record.taxAmount ?? record.tax),
+    total: numberOrEmpty(record.total),
+    paymentType: text(record.paymentType, 50),
+    customPayment: text(record.customPayment, 500),
+    payment: text(record.payment || record.paymentTerms, 1000),
+    paymentNote: text(record.paymentNote || record.paymentSupplement, 3000),
+    outputFormat: text(record.outputFormat || record.deliveryFormat, 500),
+    quoteClientName: text(record.quoteClientName || record.clientName, 200),
+    lastSheetSavedAt: text(record.lastSheetSavedAt || record.updatedAt, 50),
+    pdfIssuedAt: text(record.pdfIssuedAt, 50)
+  };
+}
+
 function pendingTimestamp(record) {
   const value = Date.parse(record.inquiryReceivedAt || record.createdAt || '');
   return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
@@ -173,6 +247,20 @@ export function normalizePendingList(value) {
   const items = rawItems
     .map(normalizePendingRecord)
     .filter((record) => record && record.status === '未対応')
+    .sort((left, right) => pendingTimestamp(left) - pendingTimestamp(right))
+    .slice(0, MAX_PENDING_ITEMS);
+  const count = Number.isFinite(Number(value && value.count))
+    ? Math.max(items.length, Number(value.count))
+    : items.length;
+  return { items, count };
+}
+
+export function normalizeActiveList(value) {
+  const allowedStatuses = new Set(['確認中', '見積作成中']);
+  const rawItems = value && Array.isArray(value.items) ? value.items : [];
+  const items = rawItems
+    .map(normalizeActiveRecord)
+    .filter((record) => record && allowedStatuses.has(record.status))
     .sort((left, right) => pendingTimestamp(left) - pendingTimestamp(right))
     .slice(0, MAX_PENDING_ITEMS);
   const count = Number.isFinite(Number(value && value.count))

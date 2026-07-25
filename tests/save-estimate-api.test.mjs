@@ -83,6 +83,22 @@ const mismatchedRecord = await handleSaveEstimateRequest(request({ record: { rec
 });
 assert.equal(mismatchedRecord.status, 502);
 
+const updateConflict = await handleSaveEstimateRequest(request({
+  record: { recordId: 'record-1', expectedUpdatedAt: '2026-07-21T18:00:00Z' }
+}), env, async () => {
+  return new Response(JSON.stringify({
+    ok: false,
+    error: 'update_conflict',
+    latestUpdatedAt: '2026-07-21T18:05:00Z'
+  }));
+});
+assert.equal(updateConflict.status, 409);
+assert.deepEqual(await updateConflict.json(), {
+  ok: false,
+  error: 'update_conflict',
+  latestUpdatedAt: '2026-07-21T18:05:00Z'
+});
+
 const timeout = await handleSaveEstimateRequest(request({ record: { recordId: 'record-1' } }), env, (url, options) => {
   return new Promise((resolve, reject) => {
     options.signal.addEventListener('abort', function () {

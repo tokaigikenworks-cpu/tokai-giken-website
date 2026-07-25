@@ -70,6 +70,28 @@ dom.window.fetch = async (url, options) => {
       json: async () => ({ ok: true, count: items.length, items })
     };
   }
+  if (url === '/api/active-inquiries') {
+    const items = pendingRecords.filter((record) => record.status === '確認中' || record.status === '見積作成中');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, count: items.length, items })
+    };
+  }
+  if (url === '/api/load-inquiry') {
+    const body = JSON.parse(options.body);
+    const source = pendingRecords.find((record) => record.recordId === body.recordId);
+    const saved = sheetRequests.map((request) => request.body.record).reverse()
+      .find((record) => record.recordId === body.recordId);
+    if (!source || !saved) {
+      return { ok: false, status: 404, json: async () => ({ ok: false, error: 'record_not_found' }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, record: { ...source, ...saved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' } })
+    };
+  }
   if (url === '/api/claim-inquiry') {
     const body = JSON.parse(options.body);
     claimRequests.push(body);
@@ -91,6 +113,8 @@ dom.window.fetch = async (url, options) => {
   if (url === '/api/save-estimate') {
     const body = JSON.parse(options.body);
     sheetRequests.push({ url, options, body });
+    const source = pendingRecords.find((record) => record.recordId === body.record.recordId);
+    if (source) source.status = body.record.status;
     return {
       ok: true,
       status: 200,
@@ -149,9 +173,11 @@ assert.equal(document.querySelector('#deliverable option:first-child').textConte
 assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
 assert.equal(document.querySelector('#payment-type').value, 'prepaid');
 assert.equal(document.querySelector('#record-status').value, '見積作成中');
-assert.equal(document.querySelector('#save-to-sheet').textContent.trim(), '案件をスプレッドシートに保存');
+assert.equal(document.querySelector('#save-to-sheet').textContent.trim(), '見積内容を途中保存');
+assert.match(document.querySelector('.sheet-save-help').textContent, /上書き保存/);
 assert.equal(document.querySelector('#sheet-save-status').textContent.trim(), '未保存');
 assert.equal(document.querySelector('#load-pending-inquiries').textContent.trim(), '未対応案件を読み込む');
+assert.equal(document.querySelector('#load-active-inquiries').textContent.trim(), '作業中案件を読み込む');
 assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
 assert.deepEqual(Array.from(document.querySelectorAll('#honorific option'), (option) => option.textContent), ['御中', '様']);
@@ -355,10 +381,10 @@ assert.equal(document.querySelector('#apply-category').disabled, true);
 async function testPendingQueueIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#pending-count').textContent, '未対応：5件');
-  assert.equal(document.querySelectorAll('.pending-inquiry-card').length, 5);
-  assert.match(document.querySelector('.pending-inquiry-card').textContent, /TG-20260721-QUEUE0001/);
+  assert.equal(document.querySelectorAll('#pending-inquiry-list .pending-inquiry-card').length, 5);
+  assert.match(document.querySelector('#pending-inquiry-list .pending-inquiry-card').textContent, /TG-20260721-QUEUE0001/);
 
-  document.querySelector('.pending-inquiry-card .pending-start-button').click();
+  document.querySelector('#pending-inquiry-list .pending-inquiry-card .pending-start-button').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(claimRequests.length, 1);
   assert.equal(claimRequests[0].recordId, 'pending-record-1');
@@ -388,13 +414,27 @@ async function testPendingQueueIntegration() {
   const queueRecord = sheetRequests.at(-1).body.record;
   assert.equal(queueRecord.recordId, 'pending-record-1');
   assert.equal(queueRecord.inquiryId, 'TG-20260721-QUEUE0001');
-  assert.equal(queueRecord.status, '確認中');
+  assert.equal(queueRecord.status, '見積作成中');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
   assert.equal(queueRecord.clientName, '依頼者1');
   assert.equal(queueRecord.quoteClientName, 'テスト株式会社');
   assert.equal(queueRecord.companyName, 'テスト株式会社');
   assert.equal(queueRecord.notes, '問い合わせ元メモ1');
   assert.deepEqual(queueRecord.attachmentNames, ['reference.step']);
   assert.equal(document.querySelector('#open-next-pending').hidden, false);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：1件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 1);
+  document.querySelector('#reset-estimate').click();
+  document.querySelector('#load-active-inquiries').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  document.querySelector('#project-name').value = '変更前の一時値';
+  document.querySelector('#active-inquiry-list .active-resume-button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#project-name').value, '対象物1');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
+  assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260721-QUEUE0001');
 
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));
@@ -408,7 +448,7 @@ async function testPendingQueueIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#pending-count').textContent, '未対応：0件');
   assert.match(document.querySelector('#pending-queue-status').textContent, /未対応案件はありません/);
-  assert.equal(document.querySelectorAll('.pending-inquiry-card').length, 0);
+  assert.equal(document.querySelectorAll('#pending-inquiry-list .pending-inquiry-card').length, 0);
 }
 
 async function testApiIntegration() {
@@ -486,6 +526,9 @@ async function testApiIntegration() {
 
   dom.window.fetch = async (url) => {
     if (url === '/api/pending-inquiries') {
+      return { ok: true, status: 200, json: async () => ({ ok: true, count: 0, items: [] }) };
+    }
+    if (url === '/api/active-inquiries') {
       return { ok: true, status: 200, json: async () => ({ ok: true, count: 0, items: [] }) };
     }
     if (url === '/api/save-estimate') {

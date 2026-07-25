@@ -41,6 +41,36 @@
   background: #f4f2ed;
 }
 
+.active-queue-panel {
+  border-top-color: #151515;
+  background: #eceae4;
+}
+
+.active-count[data-state="remaining"] {
+  background: #151515;
+  color: #fff;
+}
+
+.active-inquiry-card {
+  grid-template-columns: minmax(145px, .75fr) minmax(160px, .8fr) minmax(210px, 1.1fr) minmax(220px, 1.4fr) auto;
+  border-left: 4px solid #151515;
+}
+
+.active-inquiry-card .active-status {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.current-inquiry-panel {
+  width: min(1760px, calc(100% - 72px));
+  margin: 0 auto 18px;
+}
+
+.sheet-save-help {
+  grid-column: 1 / -1;
+  display: block;
+}
+
 .pending-queue-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1315,6 +1345,10 @@
     gap: 10px;
   }
 
+  .active-inquiry-card {
+    grid-template-columns: 1fr;
+  }
+
   .pending-start-button {
     width: 100%;
   }
@@ -1323,6 +1357,14 @@
     top: 6px;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .current-inquiry-panel {
+    width: calc(100% - 7vw);
+    max-width: calc(100% - 7vw);
+    min-width: 0;
+    box-sizing: border-box;
+    margin: 16px 3.5vw;
   }
 
   .active-inquiry-banner .button {
