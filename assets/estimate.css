@@ -1680,10 +1680,24 @@
     background: #fff;
   }
 
+  main {
+    width: 210mm;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
   .site-header,
   .estimate-hero,
+  .pending-queue-panel,
+  .active-queue-panel,
+  .active-inquiry-banner,
+  .current-inquiry-panel,
   .estimate-editor,
-  .preview-toolbar {
+  .preview-toolbar,
+  main > :not(.estimate-workspace),
+  .estimate-workspace > :not(.quote-preview-column),
+  .quote-preview-column > :not(#quote-preview) {
     display: none !important;
   }
 
@@ -1697,11 +1711,15 @@
 
   .quote-preview-column {
     position: static;
+    display: block;
     width: 210mm;
+    max-width: none;
     margin: 0;
+    padding: 0;
   }
 
   .quote-sheet {
+    display: flex;
     width: 210mm;
     height: auto;
     min-height: 297mm;
