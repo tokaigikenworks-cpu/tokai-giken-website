@@ -42,6 +42,13 @@
 
   const DEFAULT_NOTES = '送料、出張確認、外注加工、特殊材料、追加試作等が必要な場合は、事前確認のうえ別途お見積りします。';
   const DEFAULT_PAYMENT = '前払い（ご入金確認後に着手）';
+  const INTERNAL_NOTE_KEYS = [
+    'sourcePage',
+    'attachmentTypes',
+    'attachmentSizes',
+    'attachmentReferences',
+    'attachmentNames'
+  ];
   const PAYMENT_TERMS = {
     prepaid: {
       formLabel: DEFAULT_PAYMENT,
@@ -69,6 +76,33 @@
       };
     }
     return PAYMENT_TERMS.prepaid;
+  }
+
+  function visibleEstimateNotes(value) {
+    const notes = value == null ? '' : String(value);
+    const trimmed = notes.trim();
+    if (!trimmed) return '';
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (
+        parsed
+        && typeof parsed === 'object'
+        && !Array.isArray(parsed)
+        && INTERNAL_NOTE_KEYS.some(function (key) {
+          return Object.prototype.hasOwnProperty.call(parsed, key);
+        })
+      ) return '';
+    } catch (error) {
+      return notes;
+    }
+    return notes;
+  }
+
+  function estimateNotesFromRecord(record) {
+    if (Object.prototype.hasOwnProperty.call(record, 'estimateNotes')) {
+      return visibleEstimateNotes(record.estimateNotes);
+    }
+    return visibleEstimateNotes(record.notes);
   }
 
   function categoryAtLeast(current, minimum) {
@@ -227,7 +261,7 @@
       '支払条件：' + (data.payment || payment.quoteLabel),
       '支払条件補足：' + (data.paymentNote || payment.note),
       '納品形式：' + (data.outputFormat || '別途協議'),
-      '備考：' + (data.notes || DEFAULT_NOTES)
+      '備考：' + (visibleEstimateNotes(data.notes) || DEFAULT_NOTES)
     );
     return lines.join('\n');
   }
@@ -248,6 +282,7 @@
     formatQuoteDate,
     makeQuoteNumber,
     buildSummary,
+    visibleEstimateNotes,
     inferPurpose
   };
 
@@ -568,7 +603,7 @@
       payment: record.payment,
       paymentNote: record.paymentNote,
       outputFormat: record.outputFormat,
-      notes: record.estimateNotes || record.notes,
+      notes: estimateNotesFromRecord(record),
       items: Array.isArray(record.items) ? record.items : [],
       localClass: record.localClass,
       localReason: record.localReason,
@@ -709,6 +744,7 @@
     fields.projectName.value = record.projectName || '問い合わせ案件';
     fields.delivery.value = record.delivery || '';
     fields.inquiryText.value = record.inquiryText || '';
+    fields.notes.value = estimateNotesFromRecord(record);
     setSelectValueIfAllowed(fields.purpose, record.purpose, '');
     setSelectValueIfAllowed(fields.sourceType, record.sourceType, '');
     setSelectValueIfAllowed(fields.fitting, record.fitting || (record.vehicleModel ? 'known' : ''), 'none');
@@ -1488,7 +1524,7 @@
     setText('preview-payment', data.payment || DEFAULT_PAYMENT);
     setPaymentNote(data.paymentNote || PAYMENT_TERMS.prepaid.note);
     setText('preview-output-format', data.outputFormat || '別途協議');
-    setText('preview-notes', data.notes || DEFAULT_NOTES);
+    setText('preview-notes', visibleEstimateNotes(data.notes) || DEFAULT_NOTES);
 
     const previewItems = byId('preview-items');
     previewItems.replaceChildren();
@@ -1636,7 +1672,9 @@
     issuedQuoteNumber = '';
     clearApiClassification();
     Object.keys(fields).forEach(function (key) {
-      if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') setFieldValue(key, data[key]);
+      if (key !== 'taxRate' && key !== 'paymentType' && key !== 'customPayment') {
+        setFieldValue(key, key === 'notes' ? visibleEstimateNotes(data[key]) : data[key]);
+      }
     });
     setFieldValue('taxRate', data.taxRate == null ? 10 : data.taxRate);
     fields.paymentType.value = paymentType;
