@@ -16,7 +16,9 @@ const printTitles = [];
 let apiRequest = null;
 const sheetRequests = [];
 const claimRequests = [];
+const verifyRequests = [];
 let activeListRequests = 0;
+let pdfSaveResponseMode = 'normal';
 const internalInquiryNotes = JSON.stringify({
   sourcePage: '/contact',
   attachmentTypes: [],
@@ -120,11 +122,54 @@ dom.window.fetch = async (url, options) => {
       json: async () => ({ ok: true, action: 'claimed', record: { ...record } })
     };
   }
+  if (url === '/api/verify-estimate') {
+    const body = JSON.parse(options.body);
+    verifyRequests.push(body);
+    const source = pendingRecords.find((record) => record.recordId === body.recordId);
+    const verified = Boolean(
+      source
+      && source.status === '見積提出済み'
+      && source.pdfIssuedAt
+      && source.quoteNumber === body.quoteNumber
+    );
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        verified,
+        record: source ? {
+          recordId: source.recordId,
+          status: source.status,
+          pdfIssuedAt: source.pdfIssuedAt,
+          quoteNumber: source.quoteNumber,
+          savedAt: source.updatedAt || source.pdfIssuedAt
+        } : null
+      })
+    };
+  }
   if (url === '/api/save-estimate') {
     const body = JSON.parse(options.body);
     sheetRequests.push({ url, options, body });
     const source = pendingRecords.find((record) => record.recordId === body.record.recordId);
-    if (source) source.status = body.record.status;
+    if (source && pdfSaveResponseMode !== 'not-saved') {
+      source.status = body.record.status;
+      source.pdfIssuedAt = body.record.pdfIssuedAt;
+      source.quoteNumber = body.record.quoteNumber;
+      source.updatedAt = '2026-07-21T18:05:00Z';
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'timeout-after-save') {
+      pdfSaveResponseMode = 'normal';
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'invalid-after-save') {
+      pdfSaveResponseMode = 'normal';
+      return { ok: true, status: 200, json: async () => ({ invalid: true }) };
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'not-saved') {
+      pdfSaveResponseMode = 'normal';
+      return { ok: false, status: 502, json: async () => ({ ok: false, error: 'sheets_save_failed' }) };
+    }
     return {
       ok: true,
       status: 200,
@@ -490,6 +535,9 @@ async function testPendingQueueIntegration() {
   assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
 
   const activeListRequestsBeforePdf = activeListRequests;
+  const quoteNumberBeforePdf = document.querySelector('#quote-number').value;
+  const recordIdBeforePdf = queueRecord.recordId;
+  pdfSaveResponseMode = 'timeout-after-save';
   document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -500,6 +548,18 @@ async function testPendingQueueIntegration() {
   assert.equal(document.querySelector('#open-next-pending').hidden, true);
   assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件はありません/);
   assert.ok(activeListRequests > activeListRequestsBeforePdf);
+  assert.deepEqual(verifyRequests.at(-1), {
+    recordId: recordIdBeforePdf,
+    quoteNumber: quoteNumberBeforePdf
+  });
+  assert.match(document.querySelector('#action-status').textContent, /保存をスプレッドシートで確認しました/);
+  assert.equal(document.querySelector('#project-name').value, '');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
+  assert.notEqual(document.querySelector('#quote-number').value, quoteNumberBeforePdf);
+  assert.equal(document.querySelector('#sheet-save-status').textContent, '未保存');
+  assert.equal(document.querySelectorAll('#line-items tr').length, 1);
+  assert.equal(document.querySelectorAll('#preview-items tr').length, 0);
+  assert.equal(sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).length, 2);
 
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));
