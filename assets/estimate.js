@@ -99,9 +99,8 @@
   }
 
   function estimateNotesFromRecord(record) {
-    if (Object.prototype.hasOwnProperty.call(record, 'estimateNotes')) {
-      return visibleEstimateNotes(record.estimateNotes);
-    }
+    const savedEstimateNotes = visibleEstimateNotes(record.estimateNotes);
+    if (savedEstimateNotes) return savedEstimateNotes;
     return visibleEstimateNotes(record.notes);
   }
 
@@ -1384,7 +1383,7 @@
       delivery: data.sourceInquiry && data.sourceInquiry.delivery || data.delivery,
       estimateDelivery: data.delivery,
       validUntil: data.validUntil,
-      notes: data.sourceInquiry && data.sourceInquiry.notes || data.notes,
+      notes: data.notes,
       estimateNotes: data.notes,
       purpose: data.purpose,
       sourceType: data.sourceType,
