@@ -92,10 +92,12 @@ dom.window.fetch = async (url, options) => {
     if (!source || !saved) {
       return { ok: false, status: 404, json: async () => ({ ok: false, error: 'record_not_found' }) };
     }
+    const legacySaved = { ...saved };
+    delete legacySaved.estimateNotes;
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: true, record: { ...source, ...saved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' } })
+      json: async () => ({ ok: true, record: { ...source, ...legacySaved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' } })
     };
   }
   if (url === '/api/claim-inquiry') {
@@ -341,6 +343,7 @@ document.querySelector('#save-json').click();
 const resetVersion3 = JSON.parse(lastCreatedBlob.parts.join(''));
 assert.notEqual(resetVersion3.recordId, initialRecordId);
 assert.equal(resetVersion3.recordStatus, '見積作成中');
+assert.equal(resetVersion3.notes, '');
 issueDate.value = '2026-07-19';
 issueDate.dispatchEvent(input);
 assert.equal(quoteNumber.value, '20260719_2');
@@ -438,6 +441,13 @@ async function testPendingQueueIntegration() {
   assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
   assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
   assert.equal(document.querySelector('#pending-count').textContent, '未対応：4件');
+  assert.equal(document.querySelector('#notes').value, '');
+  assert.match(document.querySelector('#notes').placeholder, /送料、出張、外注加工/);
+  assert.doesNotMatch(document.querySelector('#preview-notes').textContent, /sourcePage|attachmentTypes|attachmentReferences/);
+
+  document.querySelector('#notes').value = '再開テスト用備考';
+  document.querySelector('#notes').dispatchEvent(input);
+  assert.equal(document.querySelector('#preview-notes').textContent, '再開テスト用備考');
 
   const saveCountBeforeQueueSave = sheetRequests.length;
   document.querySelector('#save-to-sheet').click();
@@ -451,7 +461,9 @@ async function testPendingQueueIntegration() {
   assert.equal(queueRecord.clientName, '依頼者1');
   assert.equal(queueRecord.quoteClientName, 'テスト株式会社');
   assert.equal(queueRecord.companyName, 'テスト株式会社');
-  assert.equal(queueRecord.notes, internalInquiryNotes);
+  assert.equal(queueRecord.notes, '再開テスト用備考');
+  assert.equal(queueRecord.estimateNotes, '再開テスト用備考');
+  assert.equal(queueRecord.sourcePage, '/contact');
   assert.deepEqual(queueRecord.attachmentNames, ['reference.step']);
   assert.equal(document.querySelector('#open-next-pending').hidden, false);
 
@@ -467,8 +479,8 @@ async function testPendingQueueIntegration() {
   assert.equal(document.querySelector('#project-name').value, '対象物1');
   assert.equal(document.querySelector('#record-status').value, '見積作成中');
   assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260721-QUEUE0001');
-  assert.equal(document.querySelector('#notes').value, '');
-  assert.doesNotMatch(document.querySelector('#preview-notes').textContent, /sourcePage|attachmentTypes|attachmentReferences/);
+  assert.equal(document.querySelector('#notes').value, '再開テスト用備考');
+  assert.equal(document.querySelector('#preview-notes').textContent, '再開テスト用備考');
   assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
   assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
 
