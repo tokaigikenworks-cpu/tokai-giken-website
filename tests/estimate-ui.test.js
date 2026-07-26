@@ -16,6 +16,12 @@ const printTitles = [];
 let apiRequest = null;
 const sheetRequests = [];
 const claimRequests = [];
+const internalInquiryNotes = JSON.stringify({
+  sourcePage: '/contact',
+  attachmentTypes: [],
+  attachmentSizes: [],
+  attachmentReferences: []
+});
 const pendingRecords = Array.from({ length: 5 }, (_, index) => ({
   recordId: `pending-record-${index + 1}`,
   inquiryId: `TG-2026072${index + 1}-QUEUE000${index + 1}`,
@@ -28,7 +34,7 @@ const pendingRecords = Array.from({ length: 5 }, (_, index) => ({
   projectName: `対象物${index + 1}`,
   inquiryText: `相談内容${index + 1}`,
   delivery: `希望納期${index + 1}`,
-  notes: `問い合わせ元メモ${index + 1}`,
+  notes: index === 0 ? internalInquiryNotes : `問い合わせ元メモ${index + 1}`,
   vehicleModel: index === 0 ? 'テスト車両' : '',
   budgetRange: index === 0 ? '10〜20万円' : '',
   sourceType: index === 0 ? 'cad' : '',
@@ -372,6 +378,32 @@ issueDate.value = '2026-07-20';
 issueDate.dispatchEvent(change);
 assert.equal(quoteNumber.value, '20260718_7');
 
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
+  value: [{ contents: JSON.stringify({
+    quoteNumber: '20260718_7',
+    issueDate: '2026-07-18',
+    notes: '見積用の通常備考',
+    items: []
+  }) }]
+});
+loadInput.dispatchEvent(change);
+assert.equal(document.querySelector('#notes').value, '見積用の通常備考');
+assert.equal(document.querySelector('#preview-notes').textContent, '見積用の通常備考');
+
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
+  value: [{ contents: JSON.stringify({
+    quoteNumber: '20260718_7',
+    issueDate: '2026-07-18',
+    notes: '{"sourcePage":',
+    items: []
+  }) }]
+});
+loadInput.dispatchEvent(change);
+assert.equal(document.querySelector('#notes').value, '{"sourcePage":');
+assert.equal(document.querySelector('#preview-notes').textContent, '{"sourcePage":');
+
 document.querySelector('#purpose').value = 'sell';
 document.querySelector('#deliverable').value = 'support';
 document.querySelector('#purpose').dispatchEvent(change);
@@ -419,7 +451,7 @@ async function testPendingQueueIntegration() {
   assert.equal(queueRecord.clientName, '依頼者1');
   assert.equal(queueRecord.quoteClientName, 'テスト株式会社');
   assert.equal(queueRecord.companyName, 'テスト株式会社');
-  assert.equal(queueRecord.notes, '問い合わせ元メモ1');
+  assert.equal(queueRecord.notes, internalInquiryNotes);
   assert.deepEqual(queueRecord.attachmentNames, ['reference.step']);
   assert.equal(document.querySelector('#open-next-pending').hidden, false);
 
@@ -435,6 +467,10 @@ async function testPendingQueueIntegration() {
   assert.equal(document.querySelector('#project-name').value, '対象物1');
   assert.equal(document.querySelector('#record-status').value, '見積作成中');
   assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260721-QUEUE0001');
+  assert.equal(document.querySelector('#notes').value, '');
+  assert.doesNotMatch(document.querySelector('#preview-notes').textContent, /sourcePage|attachmentTypes|attachmentReferences/);
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
 
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));
