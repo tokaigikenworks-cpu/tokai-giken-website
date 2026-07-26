@@ -27,6 +27,16 @@ assert.equal(engine.getPaymentDetails('split').note, '着手金のご入金確�
 assert.equal(engine.formatQuoteDate('2026-07-19'), '20260719');
 assert.equal(engine.makeQuoteNumber('2026-07-19', 1), '20260719_1');
 assert.equal(engine.makeQuoteNumber('2026-07-19', 3), '20260719_3');
+const internalNotes = JSON.stringify({
+  sourcePage: '/contact',
+  attachmentTypes: [],
+  attachmentSizes: [],
+  attachmentReferences: [],
+  attachmentNames: ['reference.step']
+});
+assert.equal(engine.visibleEstimateNotes(internalNotes), '');
+assert.equal(engine.visibleEstimateNotes('見積用の通常備考'), '見積用の通常備考');
+assert.equal(engine.visibleEstimateNotes('{"sourcePage":'), '{"sourcePage":');
 
 const fittingResult = engine.classifyCase({
   purpose: 'reproduce',
@@ -86,5 +96,13 @@ const zeroPriceSummary = engine.buildSummary({
 });
 assert.doesNotMatch(zeroPriceSummary, /未入力/);
 assert.match(zeroPriceSummary, /初回相談費 \/ 1式 \/ ¥0/);
+
+const internalNotesSummary = engine.buildSummary({
+  notes: internalNotes,
+  items: [],
+  taxRate: 10
+});
+assert.doesNotMatch(internalNotesSummary, /sourcePage|attachmentNames|reference\.step/);
+assert.match(internalNotesSummary, new RegExp('備考：' + engine.DEFAULT_NOTES));
 
 console.log('estimate-engine: all tests passed');
