@@ -1,4 +1,7 @@
+import { queryVerifiedEstimateIssue } from './verify-estimate.js';
+
 const SHEETS_TIMEOUT_MS = 10000;
+const VERIFY_TIMEOUT_MS = 6000;
 
 function jsonResponse(body, status) {
   return new Response(JSON.stringify(body), {
@@ -39,6 +42,7 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
     return jsonResponse({ ok: false, error: 'invalid_record' }, 400);
   }
   const recordId = String(payload.record.recordId || '').trim();
+  const quoteNumber = String(payload.record.quoteNumber || '').trim();
   if (!recordId) {
     return jsonResponse({ ok: false, error: 'invalid_record_id' }, 400);
   }
@@ -48,6 +52,24 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
 
   const controller = new AbortController();
   const timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+  const verifyUncertainSave = async function () {
+    if (!quoteNumber || payload.record.status !== '見積提出済み') return null;
+    const verification = await queryVerifiedEstimateIssue(
+      env,
+      recordId,
+      quoteNumber,
+      fetchImpl,
+      Math.min(timeoutMs, VERIFY_TIMEOUT_MS)
+    );
+    if (!verification.ok || !verification.verified) return null;
+    return jsonResponse({
+      ok: true,
+      action: 'verified',
+      recordId,
+      savedAt: verification.record.savedAt || verification.record.pdfIssuedAt,
+      verified: true
+    }, 200);
+  };
   try {
     const googleResponse = await fetchImpl(env.SHEETS_WEB_APP_URL, {
       method: 'POST',
@@ -61,13 +83,15 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
       redirect: 'follow'
     });
     if (!googleResponse.ok) {
-      return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
+      return await verifyUncertainSave()
+        || jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
     }
     let result;
     try {
       result = await googleResponse.json();
     } catch (error) {
-      return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
+      return await verifyUncertainSave()
+        || jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
     }
     if (result && result.ok === false && result.error === 'update_conflict') {
       return jsonResponse({
@@ -77,7 +101,8 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
       }, 409);
     }
     if (!validGoogleResponse(result, recordId)) {
-      return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
+      return await verifyUncertainSave()
+        || jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
     }
     return jsonResponse({
       ok: true,
@@ -86,7 +111,8 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
       savedAt: result.savedAt.trim()
     }, 200);
   } catch (error) {
-    return jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
+    return await verifyUncertainSave()
+      || jsonResponse({ ok: false, error: 'sheets_save_failed' }, 502);
   } finally {
     clearTimeout(timer);
   }
