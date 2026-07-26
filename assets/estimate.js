@@ -1441,6 +1441,49 @@
     });
   }
 
+  async function verifyIssuedEstimate(recordIdToVerify, quoteNumberToVerify) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
+    try {
+      const response = await fetch('/api/verify-estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          recordId: recordIdToVerify,
+          quoteNumber: quoteNumberToVerify
+        }),
+        signal: controller.signal
+      });
+      const result = await response.json().catch(function () { return {}; });
+      return response.ok
+        && result.ok === true
+        && result.verified === true
+        && result.record
+        && result.record.recordId === recordIdToVerify
+        && result.record.status === '見積提出済み'
+        && Boolean(result.record.pdfIssuedAt)
+        && result.record.quoteNumber === quoteNumberToVerify
+        ? result.record
+        : null;
+    } catch (error) {
+      return null;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  async function completePdfSave(result, verified) {
+    lastSheetSavedAt = String(result.savedAt || result.updatedAt || result.pdfIssuedAt || '');
+    clearCompletedActiveInquiry();
+    resetEstimateFormState();
+    void loadPendingInquiries({ silent: true });
+    await loadActiveInquiries({ silent: true });
+    setStatus(verified
+      ? 'PDF発行情報の保存をスプレッドシートで確認しました'
+      : 'PDF発行情報をスプレッドシートへ保存しました');
+  }
+
   async function saveEstimateToSheet(options) {
     const settings = options || {};
     const button = byId('save-to-sheet');
@@ -1449,7 +1492,7 @@
     const advanceToDraft = !settings.pdf && statusBeforeSave === '確認中';
     if (advanceToDraft) fields.recordStatus.value = '見積作成中';
     const controller = new AbortController();
-    const timeout = window.setTimeout(function () { controller.abort(); }, 12000);
+    const timeout = window.setTimeout(function () { controller.abort(); }, 20000);
     button.disabled = true;
     setSheetSaveStatus('saving', '保存中');
     try {
@@ -1466,6 +1509,10 @@
         }
         throw new Error(result.error || 'sheets_save_failed');
       }
+      if (settings.pdf) {
+        await completePdfSave(result, Boolean(result.verified));
+        return true;
+      }
       lastSheetSavedAt = String(result.savedAt || '');
       if (activeInquiryRecord) activeInquiryRecord.updatedAt = lastSheetSavedAt;
       if (revisionAtStart === sheetRevision) {
@@ -1473,19 +1520,21 @@
       } else {
         setSheetSaveStatus('unsaved', '未保存（保存開始後に変更があります）');
       }
-      if (settings.pdf) {
-        setStatus('PDF発行情報をスプレッドシートへ保存しました');
-        clearCompletedActiveInquiry();
-      } else {
-        showNextPendingAction();
-      }
+      showNextPendingAction();
       void loadPendingInquiries({ silent: true });
       await loadActiveInquiries({ silent: true });
       return true;
     } catch (error) {
+      if (settings.pdf) {
+        const verifiedRecord = await verifyIssuedEstimate(recordId, fields.quoteNumber.value.trim());
+        if (verifiedRecord) {
+          await completePdfSave(verifiedRecord, true);
+          return true;
+        }
+      }
       if (advanceToDraft) fields.recordStatus.value = statusBeforeSave;
       setSheetSaveStatus('error', '保存失敗');
-      if (settings.pdf) setStatus('PDFは作成しましたが、スプレッドシートへの保存に失敗しました');
+      if (settings.pdf) setStatus('PDFは作成しましたが、スプレッドシートへの保存を確認できませんでした');
       else setStatus(error.message && error.message !== 'sheets_save_failed'
         ? error.message
         : '途中保存に失敗しました。入力内容は保持されています。再試行してください。');
@@ -1718,8 +1767,7 @@
     }
   }
 
-  function resetForm() {
-    if (!window.confirm('入力中の見積内容をリセットしますか？')) return;
+  function resetEstimateFormState() {
     form.reset();
     itemContainer.replaceChildren();
     clearImagePreviews();
@@ -1734,6 +1782,11 @@
     addLineItem();
     updateClassification();
     updatePreview();
+  }
+
+  function resetForm() {
+    if (!window.confirm('入力中の見積内容をリセットしますか？')) return;
+    resetEstimateFormState();
     setStatus('入力内容をリセットしました。');
   }
 
