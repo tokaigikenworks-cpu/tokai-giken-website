@@ -179,6 +179,33 @@ function numberOrEmpty(value) {
   return Number.isFinite(Number(value)) ? Number(value) : '';
 }
 
+const INTERNAL_NOTE_KEYS = new Set([
+  'sourcePage',
+  'attachmentTypes',
+  'attachmentSizes',
+  'attachmentReferences',
+  'attachmentNames'
+]);
+
+function estimateNotes(record) {
+  const savedEstimateNotes = text(record.estimateNotes, 10000);
+  if (savedEstimateNotes) return savedEstimateNotes;
+  const legacyNotes = text(record.notes, 10000);
+  if (!legacyNotes) return '';
+  try {
+    const parsed = JSON.parse(legacyNotes);
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && !Array.isArray(parsed)
+      && Object.keys(parsed).some((key) => INTERNAL_NOTE_KEYS.has(key))
+    ) return '';
+  } catch {
+    return legacyNotes;
+  }
+  return legacyNotes;
+}
+
 export function normalizeActiveRecord(record) {
   const base = normalizePendingRecord(record);
   if (!base) return null;
@@ -207,7 +234,7 @@ export function normalizeLoadedRecord(record) {
     estimateInquiryText: text(record.estimateInquiryText || record.inquiryText, 10000),
     estimateDelivery: text(record.estimateDelivery || record.delivery, 200),
     validUntil: text(record.validUntil, 50),
-    estimateNotes: text(record.estimateNotes || record.notes, 10000),
+    estimateNotes: estimateNotes(record),
     issueDate: text(record.issueDate, 50),
     localClass: text(record.localClass, 10),
     localReason: text(record.localReason, 5000),
