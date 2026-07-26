@@ -24,6 +24,7 @@ function request(body, options = {}) {
 }
 
 const record = createInquiryRecord({
+  inquiryId: 'TG-20260722-TEST0001',
   name: 'テスト太郎',
   company: 'テスト会社',
   email: 'test@example.com',
@@ -37,6 +38,7 @@ const record = createInquiryRecord({
 }, { now: '2026-07-22T12:00:00.000Z', randomUUID: () => '00000000-0000-4000-8000-000000000001' });
 
 assert.equal(record.recordId, '00000000-0000-4000-8000-000000000001');
+assert.equal(record.inquiryId, 'TG-20260722-TEST0001');
 assert.equal(record.status, '未対応');
 assert.equal(record.projectName, 'テスト部品');
 assert.equal(record.sourceType, 'cad');

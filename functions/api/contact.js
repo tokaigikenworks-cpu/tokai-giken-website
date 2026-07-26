@@ -249,7 +249,7 @@ export async function handleContactRequest(context, dependencies = {}) {
     return json({ ok: false, inquiryId, message: `受付番号 ${inquiryId} で保存しましたが、通知処理を完了できませんでした。` }, 502);
   }
 
-  const sheetRecord = createInquiryRecord({ ...inquiry, attachments }, { now: receivedAt });
+  const sheetRecord = createInquiryRecord({ ...inquiry, inquiryId, attachments }, { now: receivedAt });
   const sheetTask = (async () => {
     const startedAt = now();
     try {

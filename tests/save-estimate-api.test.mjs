@@ -83,6 +83,22 @@ const mismatchedRecord = await handleSaveEstimateRequest(request({ record: { rec
 });
 assert.equal(mismatchedRecord.status, 502);
 
+const updateConflict = await handleSaveEstimateRequest(request({
+  record: { recordId: 'record-1', expectedUpdatedAt: '2026-07-21T18:00:00Z' }
+}), env, async () => {
+  return new Response(JSON.stringify({
+    ok: false,
+    error: 'update_conflict',
+    latestUpdatedAt: '2026-07-21T18:05:00Z'
+  }));
+});
+assert.equal(updateConflict.status, 409);
+assert.deepEqual(await updateConflict.json(), {
+  ok: false,
+  error: 'update_conflict',
+  latestUpdatedAt: '2026-07-21T18:05:00Z'
+});
+
 const timeout = await handleSaveEstimateRequest(request({ record: { recordId: 'record-1' } }), env, (url, options) => {
   return new Promise((resolve, reject) => {
     options.signal.addEventListener('abort', function () {
@@ -92,5 +108,63 @@ const timeout = await handleSaveEstimateRequest(request({ record: { recordId: 'r
 }, 5);
 assert.equal(timeout.status, 502);
 assert.equal((await timeout.json()).error, 'sheets_save_failed');
+
+const issuedRecord = {
+  recordId: 'record-issued',
+  status: '見積提出済み',
+  quoteNumber: '20260726_1',
+  pdfIssuedAt: '2026-07-26T06:00:00.000Z'
+};
+
+let timeoutCalls = 0;
+const timeoutButSaved = await handleSaveEstimateRequest(request({ record: issuedRecord }), env, async (_url, options) => {
+  timeoutCalls += 1;
+  const body = JSON.parse(options.body);
+  if (body.action === 'verifyEstimateIssue') {
+    return new Response(JSON.stringify({
+      ok: true,
+      record: { ...issuedRecord, updatedAt: '2026-07-26T06:00:01.000Z' }
+    }));
+  }
+  return new Promise((resolve, reject) => {
+    options.signal.addEventListener('abort', function () {
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    });
+  });
+}, 5);
+assert.equal(timeoutButSaved.status, 200);
+assert.deepEqual(await timeoutButSaved.json(), {
+  ok: true,
+  action: 'verified',
+  recordId: 'record-issued',
+  savedAt: '2026-07-26T06:00:01.000Z',
+  verified: true
+});
+assert.equal(timeoutCalls, 2);
+
+const invalidResponseButSaved = await handleSaveEstimateRequest(request({ record: issuedRecord }), env, async (_url, options) => {
+  const body = JSON.parse(options.body);
+  if (body.action === 'verifyEstimateIssue') {
+    return new Response(JSON.stringify({ ok: true, record: issuedRecord }));
+  }
+  return new Response('invalid-json');
+}, 20);
+assert.equal(invalidResponseButSaved.status, 200);
+assert.equal((await invalidResponseButSaved.json()).action, 'verified');
+
+const actuallyNotSavedBodies = [];
+const actuallyNotSaved = await handleSaveEstimateRequest(request({ record: issuedRecord }), env, async (_url, options) => {
+  const body = JSON.parse(options.body);
+  actuallyNotSavedBodies.push(body);
+  if (body.action === 'verifyEstimateIssue') {
+    return new Response(JSON.stringify({ ok: false, error: 'record_not_found' }));
+  }
+  return new Response('{}', { status: 500 });
+}, 20);
+assert.equal(actuallyNotSaved.status, 502);
+assert.equal((await actuallyNotSaved.json()).error, 'sheets_save_failed');
+assert.equal(actuallyNotSavedBodies.length, 2);
+assert.equal(actuallyNotSavedBodies.filter((body) => body.record).length, 1);
+assert.equal(actuallyNotSavedBodies.filter((body) => body.action === 'verifyEstimateIssue').length, 1);
 
 console.log('save-estimate-api: all tests passed');

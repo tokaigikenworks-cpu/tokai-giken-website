@@ -15,6 +15,38 @@ let printCalls = 0;
 const printTitles = [];
 let apiRequest = null;
 const sheetRequests = [];
+const claimRequests = [];
+const verifyRequests = [];
+let activeListRequests = 0;
+let pdfSaveResponseMode = 'normal';
+const internalInquiryNotes = JSON.stringify({
+  sourcePage: '/contact',
+  attachmentTypes: [],
+  attachmentSizes: [],
+  attachmentReferences: []
+});
+const pendingRecords = Array.from({ length: 5 }, (_, index) => ({
+  recordId: `pending-record-${index + 1}`,
+  inquiryId: `TG-2026072${index + 1}-QUEUE000${index + 1}`,
+  status: '未対応',
+  createdAt: `2026-07-2${index + 1}T08:00:00.000Z`,
+  inquiryReceivedAt: `2026-07-2${index + 1}T08:00:00.000Z`,
+  clientName: `依頼者${index + 1}`,
+  companyName: index === 0 ? 'テスト株式会社' : '',
+  email: `client${index + 1}@example.com`,
+  projectName: `対象物${index + 1}`,
+  inquiryText: `相談内容${index + 1}`,
+  delivery: `希望納期${index + 1}`,
+  notes: index === 0 ? internalInquiryNotes : `問い合わせ元メモ${index + 1}`,
+  vehicleModel: index === 0 ? 'テスト車両' : '',
+  budgetRange: index === 0 ? '10〜20万円' : '',
+  sourceType: index === 0 ? 'cad' : '',
+  fitting: index === 0 ? 'known' : '',
+  attachmentCount: index === 0 ? 1 : 0,
+  attachmentNames: index === 0 ? ['reference.step'] : [],
+  attachmentReferences: index === 0 ? ['contacts/pending-record-1/reference.step'] : [],
+  sourcePage: '/contact'
+}));
 let lastCreatedBlob = null;
 let uuidSequence = 0;
 dom.window.print = () => {
@@ -39,9 +71,105 @@ dom.window.URL.createObjectURL = (blob) => {
 };
 dom.window.URL.revokeObjectURL = () => {};
 dom.window.fetch = async (url, options) => {
+  if (url === '/api/pending-inquiries') {
+    const items = pendingRecords.filter((record) => record.status === '未対応');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, count: items.length, items })
+    };
+  }
+  if (url === '/api/active-inquiries') {
+    activeListRequests += 1;
+    const items = pendingRecords.filter((record) => record.status === '確認中' || record.status === '見積作成中');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, count: items.length, items })
+    };
+  }
+  if (url === '/api/load-inquiry') {
+    const body = JSON.parse(options.body);
+    const source = pendingRecords.find((record) => record.recordId === body.recordId);
+    const saved = sheetRequests.map((request) => request.body.record).reverse()
+      .find((record) => record.recordId === body.recordId);
+    if (!source || !saved) {
+      return { ok: false, status: 404, json: async () => ({ ok: false, error: 'record_not_found' }) };
+    }
+    const legacySaved = { ...saved };
+    delete legacySaved.estimateNotes;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, record: { ...source, ...legacySaved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' } })
+    };
+  }
+  if (url === '/api/claim-inquiry') {
+    const body = JSON.parse(options.body);
+    claimRequests.push(body);
+    const record = pendingRecords.find((item) => item.recordId === body.recordId);
+    if (!record || record.status !== '未対応') {
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({ ok: false, error: 'already_claimed', status: record && record.status || '' })
+      };
+    }
+    record.status = '確認中';
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, action: 'claimed', record: { ...record } })
+    };
+  }
+  if (url === '/api/verify-estimate') {
+    const body = JSON.parse(options.body);
+    verifyRequests.push(body);
+    const source = pendingRecords.find((record) => record.recordId === body.recordId);
+    const verified = Boolean(
+      source
+      && source.status === '見積提出済み'
+      && source.pdfIssuedAt
+      && source.quoteNumber === body.quoteNumber
+    );
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        verified,
+        record: source ? {
+          recordId: source.recordId,
+          status: source.status,
+          pdfIssuedAt: source.pdfIssuedAt,
+          quoteNumber: source.quoteNumber,
+          savedAt: source.updatedAt || source.pdfIssuedAt
+        } : null
+      })
+    };
+  }
   if (url === '/api/save-estimate') {
     const body = JSON.parse(options.body);
     sheetRequests.push({ url, options, body });
+    const source = pendingRecords.find((record) => record.recordId === body.record.recordId);
+    if (source && pdfSaveResponseMode !== 'not-saved') {
+      source.status = body.record.status;
+      source.pdfIssuedAt = body.record.pdfIssuedAt;
+      source.quoteNumber = body.record.quoteNumber;
+      source.updatedAt = '2026-07-21T18:05:00Z';
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'timeout-after-save') {
+      pdfSaveResponseMode = 'normal';
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'invalid-after-save') {
+      pdfSaveResponseMode = 'normal';
+      return { ok: true, status: 200, json: async () => ({ invalid: true }) };
+    }
+    if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'not-saved') {
+      pdfSaveResponseMode = 'normal';
+      return { ok: false, status: 502, json: async () => ({ ok: false, error: 'sheets_save_failed' }) };
+    }
     return {
       ok: true,
       status: 200,
@@ -100,8 +228,12 @@ assert.equal(document.querySelector('#deliverable option:first-child').textConte
 assert.equal(document.querySelector('#deliverable option[value="reference"]').textContent, '3Dデータ（点群またはメッシュ）');
 assert.equal(document.querySelector('#payment-type').value, 'prepaid');
 assert.equal(document.querySelector('#record-status').value, '見積作成中');
-assert.equal(document.querySelector('#save-to-sheet').textContent.trim(), '案件をスプレッドシートに保存');
+assert.equal(document.querySelector('#save-to-sheet').textContent.trim(), '見積内容を途中保存');
+assert.match(document.querySelector('.sheet-save-help').textContent, /上書き保存/);
 assert.equal(document.querySelector('#sheet-save-status').textContent.trim(), '未保存');
+assert.equal(document.querySelector('#load-pending-inquiries').textContent.trim(), '未対応案件を読み込む');
+assert.equal(document.querySelector('#load-active-inquiries').textContent.trim(), '作業中案件を読み込む');
+assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
 assert.deepEqual(Array.from(document.querySelectorAll('#honorific option'), (option) => option.textContent), ['御中', '様']);
 assert.match(document.querySelector('.recipient-help').textContent, /個人名は「様」/);
@@ -118,15 +250,21 @@ assert.equal(document.querySelector('#editor-total').textContent, '¥0');
 assert.match(document.querySelector('.edit-data-help').textContent, /後から再編集/);
 assert.match(styles, /\.tool-actions \.button[\s\S]*min-height: 48px/);
 assert.match(styles, /\.sheet-save-status\[data-state="saved"\]/);
+assert.match(styles, /\.pending-count\[data-state="remaining"\]/);
+assert.match(styles, /\.active-inquiry-banner[\s\S]*position: sticky/);
 assert.match(styles, /#custom-payment-label\[hidden\][\s\S]*display: none !important/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.line-items-table tr[\s\S]*display: grid/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-actions[\s\S]*grid-template-columns: 1fr/);
+assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.pending-inquiry-card[\s\S]*grid-template-columns: 1fr/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet[\s\S]*aspect-ratio: 210 \/ 297/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-panel input\[type="date"\][\s\S]*width: 100%[\s\S]*min-inline-size: 0[\s\S]*-webkit-appearance: none[\s\S]*appearance: none/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-form-grid > label[\s\S]*max-width: 100%[\s\S]*min-width: 0/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet \.quote-footer[\s\S]*width: 100%[\s\S]*margin: auto 0 0/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-notes[\s\S]*flex: 1 1 0/);
 assert.match(styles, /@media print[\s\S]*\.quote-sheet[\s\S]*width: 210mm/);
+assert.match(styles, /@media print[\s\S]*\.pending-queue-panel,[\s\S]*\.active-queue-panel,[\s\S]*\.active-inquiry-banner,[\s\S]*\.current-inquiry-panel,[\s\S]*display: none !important/);
+assert.match(styles, /@media print[\s\S]*main > :not\(\.estimate-workspace\),[\s\S]*\.estimate-workspace > :not\(\.quote-preview-column\),[\s\S]*\.quote-preview-column > :not\(#quote-preview\)/);
+assert.match(styles, /@media print[\s\S]*main \{[\s\S]*width: 210mm[\s\S]*padding: 0/);
 assert.doesNotMatch(styles, /overflow-x:\s*hidden/);
 assert.match(script, /outputFormat: fields\.outputFormat\.value\.trim\(\)/);
 
@@ -255,6 +393,7 @@ document.querySelector('#save-json').click();
 const resetVersion3 = JSON.parse(lastCreatedBlob.parts.join(''));
 assert.notEqual(resetVersion3.recordId, initialRecordId);
 assert.equal(resetVersion3.recordStatus, '見積作成中');
+assert.equal(resetVersion3.notes, '');
 issueDate.value = '2026-07-19';
 issueDate.dispatchEvent(input);
 assert.equal(quoteNumber.value, '20260719_2');
@@ -292,15 +431,158 @@ issueDate.value = '2026-07-20';
 issueDate.dispatchEvent(change);
 assert.equal(quoteNumber.value, '20260718_7');
 
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
+  value: [{ contents: JSON.stringify({
+    quoteNumber: '20260718_7',
+    issueDate: '2026-07-18',
+    notes: '見積用の通常備考',
+    items: []
+  }) }]
+});
+loadInput.dispatchEvent(change);
+assert.equal(document.querySelector('#notes').value, '見積用の通常備考');
+assert.equal(document.querySelector('#preview-notes').textContent, '見積用の通常備考');
+
+Object.defineProperty(loadInput, 'files', {
+  configurable: true,
+  value: [{ contents: JSON.stringify({
+    quoteNumber: '20260718_7',
+    issueDate: '2026-07-18',
+    notes: '{"sourcePage":',
+    items: []
+  }) }]
+});
+loadInput.dispatchEvent(change);
+assert.equal(document.querySelector('#notes').value, '{"sourcePage":');
+assert.equal(document.querySelector('#preview-notes').textContent, '{"sourcePage":');
+
 document.querySelector('#purpose').value = 'sell';
 document.querySelector('#deliverable').value = 'support';
 document.querySelector('#purpose').dispatchEvent(change);
 assert.equal(document.querySelector('#category-code').textContent, 'E');
 assert.equal(document.querySelector('#apply-category').disabled, true);
 
+async function testPendingQueueIntegration() {
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#pending-count').textContent, '未対応：5件');
+  assert.equal(document.querySelectorAll('#pending-inquiry-list .pending-inquiry-card').length, 5);
+  assert.match(document.querySelector('#pending-inquiry-list .pending-inquiry-card').textContent, /TG-20260721-QUEUE0001/);
+
+  document.querySelector('#pending-inquiry-list .pending-inquiry-card .pending-start-button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(claimRequests.length, 1);
+  assert.equal(claimRequests[0].recordId, 'pending-record-1');
+  assert.equal(pendingRecords[0].status, '確認中');
+  assert.equal(document.querySelector('#record-status').value, '確認中');
+  assert.equal(document.querySelector('#client-name').value, 'テスト株式会社');
+  assert.equal(document.querySelector('#honorific').value, '御中');
+  assert.equal(document.querySelector('#project-name').value, '対象物1');
+  assert.equal(document.querySelector('#inquiry-text').value, '相談内容1');
+  assert.equal(document.querySelector('#delivery').value, '希望納期1');
+  assert.equal(document.querySelector('#source-type').value, 'cad');
+  assert.equal(document.querySelector('#fitting').value, 'known');
+  assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260721-QUEUE0001');
+  assert.equal(document.querySelector('#active-inquiry-banner').hidden, false);
+  assert.match(document.querySelector('#imported-inquiry-details').textContent, /依頼者1/);
+  assert.match(document.querySelector('#imported-inquiry-details').textContent, /テスト株式会社/);
+  assert.match(document.querySelector('#imported-inquiry-details').textContent, /テスト車両/);
+  assert.match(document.querySelector('#imported-inquiry-details').textContent, /10〜20万円/);
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
+  assert.equal(document.querySelector('#pending-count').textContent, '未対応：4件');
+  assert.equal(document.querySelector('#notes').value, '');
+  assert.match(document.querySelector('#notes').placeholder, /送料、出張、外注加工/);
+  assert.doesNotMatch(document.querySelector('#preview-notes').textContent, /sourcePage|attachmentTypes|attachmentReferences/);
+
+  document.querySelector('#notes').value = '再開テスト用備考';
+  document.querySelector('#notes').dispatchEvent(input);
+  assert.equal(document.querySelector('#preview-notes').textContent, '再開テスト用備考');
+
+  const saveCountBeforeQueueSave = sheetRequests.length;
+  document.querySelector('#save-to-sheet').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sheetRequests.length, saveCountBeforeQueueSave + 1);
+  const queueRecord = sheetRequests.at(-1).body.record;
+  assert.equal(queueRecord.recordId, 'pending-record-1');
+  assert.equal(queueRecord.inquiryId, 'TG-20260721-QUEUE0001');
+  assert.equal(queueRecord.status, '見積作成中');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
+  assert.equal(queueRecord.clientName, '依頼者1');
+  assert.equal(queueRecord.quoteClientName, 'テスト株式会社');
+  assert.equal(queueRecord.companyName, 'テスト株式会社');
+  assert.equal(queueRecord.notes, '再開テスト用備考');
+  assert.equal(queueRecord.estimateNotes, '再開テスト用備考');
+  assert.equal(queueRecord.sourcePage, '/contact');
+  assert.deepEqual(queueRecord.attachmentNames, ['reference.step']);
+  assert.equal(document.querySelector('#open-next-pending').hidden, false);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：1件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 1);
+  document.querySelector('#reset-estimate').click();
+  document.querySelector('#load-active-inquiries').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  document.querySelector('#project-name').value = '変更前の一時値';
+  document.querySelector('#active-inquiry-list .active-resume-button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#project-name').value, '対象物1');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
+  assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260721-QUEUE0001');
+  assert.equal(document.querySelector('#notes').value, '再開テスト用備考');
+  assert.equal(document.querySelector('#preview-notes').textContent, '再開テスト用備考');
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
+  assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
+
+  const activeListRequestsBeforePdf = activeListRequests;
+  const quoteNumberBeforePdf = document.querySelector('#quote-number').value;
+  const recordIdBeforePdf = queueRecord.recordId;
+  pdfSaveResponseMode = 'timeout-after-save';
+  document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pendingRecords[0].status, '見積提出済み');
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：0件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 0);
+  assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
+  assert.equal(document.querySelector('#open-next-pending').hidden, true);
+  assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件はありません/);
+  assert.ok(activeListRequests > activeListRequestsBeforePdf);
+  assert.deepEqual(verifyRequests.at(-1), {
+    recordId: recordIdBeforePdf,
+    quoteNumber: quoteNumberBeforePdf
+  });
+  assert.match(document.querySelector('#action-status').textContent, /保存をスプレッドシートで確認しました/);
+  assert.equal(document.querySelector('#project-name').value, '');
+  assert.equal(document.querySelector('#record-status').value, '見積作成中');
+  assert.notEqual(document.querySelector('#quote-number').value, quoteNumberBeforePdf);
+  assert.equal(document.querySelector('#sheet-save-status').textContent, '未保存');
+  assert.equal(document.querySelectorAll('#line-items tr').length, 1);
+  assert.equal(document.querySelectorAll('#preview-items tr').length, 0);
+  assert.equal(sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).length, 2);
+
+  document.querySelector('#open-next-pending').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(claimRequests.length, 2);
+  assert.equal(claimRequests[1].recordId, 'pending-record-2');
+  assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260722-QUEUE0002');
+
+  pendingRecords.forEach((record) => { record.status = '確認中'; });
+  document.querySelector('#load-pending-inquiries').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#pending-count').textContent, '未対応：0件');
+  assert.match(document.querySelector('#pending-queue-status').textContent, /未対応案件はありません/);
+  assert.equal(document.querySelectorAll('#pending-inquiry-list .pending-inquiry-card').length, 0);
+}
+
 async function testApiIntegration() {
   document.querySelector('#inquiry-text').value = '車両用ブラケットを設計したい';
+  document.querySelector('#purpose').value = 'sell';
+  document.querySelector('#deliverable').value = 'support';
+  document.querySelector('#purpose').dispatchEvent(change);
   document.querySelector('#payment-type').value = 'prepaid';
+  document.querySelector('#payment-type').dispatchEvent(change);
   document.querySelector('#classify-with-api').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(apiRequest.url, '/api/estimate');
@@ -368,6 +650,12 @@ async function testApiIntegration() {
   assert.match(document.querySelector('#api-classification-status').textContent, /もう一度/);
 
   dom.window.fetch = async (url) => {
+    if (url === '/api/pending-inquiries') {
+      return { ok: true, status: 200, json: async () => ({ ok: true, count: 0, items: [] }) };
+    }
+    if (url === '/api/active-inquiries') {
+      return { ok: true, status: 200, json: async () => ({ ok: true, count: 0, items: [] }) };
+    }
     if (url === '/api/save-estimate') {
       return { ok: false, status: 502, json: async () => ({ ok: false, error: 'sheets_save_failed' }) };
     }
@@ -395,10 +683,11 @@ async function testApiIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#sheet-save-status').dataset.state, 'error');
   assert.equal(document.querySelector('#project-name').value, projectBeforeFailure);
-  assert.equal(printCalls, 2);
+  assert.equal(printCalls, 3);
 }
 
-testApiIntegration()
+testPendingQueueIntegration()
+  .then(testApiIntegration)
   .then(() => console.log('estimate-ui: all tests passed'))
   .catch((error) => {
     console.error(error);
