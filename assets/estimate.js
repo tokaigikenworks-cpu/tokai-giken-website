@@ -811,6 +811,20 @@
     byId('open-next-pending').hidden = false;
   }
 
+  function clearCompletedActiveInquiry() {
+    const completedRecordId = String(activeInquiryRecord && activeInquiryRecord.recordId || recordId);
+    activeInquiries = activeInquiries.filter(function (record) {
+      return record.recordId !== completedRecordId;
+    });
+    activeInquiryCount = activeInquiries.length;
+    activeInquiryRecord = null;
+    renderImportedInquiry(null);
+    renderActiveInquiries();
+    setActiveQueueStatus(activeInquiryCount
+      ? '作業中案件が' + activeInquiryCount + '件あります。受付日時の古い順に表示しています。'
+      : '作業中案件はありません。', activeInquiryCount ? 'remaining' : 'empty');
+  }
+
   async function openNextPendingInquiry() {
     await loadPendingInquiries({ silent: true });
     if (!pendingInquiries.length) {
@@ -1459,10 +1473,14 @@
       } else {
         setSheetSaveStatus('unsaved', '未保存（保存開始後に変更があります）');
       }
-      if (settings.pdf) setStatus('PDF発行情報をスプレッドシートへ保存しました');
-      showNextPendingAction();
+      if (settings.pdf) {
+        setStatus('PDF発行情報をスプレッドシートへ保存しました');
+        clearCompletedActiveInquiry();
+      } else {
+        showNextPendingAction();
+      }
       void loadPendingInquiries({ silent: true });
-      void loadActiveInquiries({ silent: true });
+      await loadActiveInquiries({ silent: true });
       return true;
     } catch (error) {
       if (advanceToDraft) fields.recordStatus.value = statusBeforeSave;
