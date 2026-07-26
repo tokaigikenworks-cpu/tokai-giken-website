@@ -56,6 +56,8 @@ const loadResponse = await handleLoadInquiryRequest(loadRequest('older'), env, a
       quoteClientName: '株式会社テスト',
       estimateProjectName: '再開テスト',
       estimateInquiryText: '保存済み相談内容',
+      estimateNotes: '',
+      notes: '再開テスト用備考',
       itemsJson: JSON.stringify([{ description: '設計費', quantity: 2, unit: '式', price: 50000 }]),
       apiWarnings: JSON.stringify(['取付条件を確認']),
       taxRate: 10,
@@ -68,8 +70,40 @@ const loaded = (await loadResponse.json()).record;
 assert.equal(loaded.recordId, 'older');
 assert.equal(loaded.items[0].price, 50000);
 assert.deepEqual(loaded.apiWarnings, ['取付条件を確認']);
+assert.equal(loaded.estimateNotes, '再開テスト用備考');
 assert.equal(loadPayload.action, 'loadInquiry');
 assert.equal(loadPayload.environment, 'preview');
+
+const internalNotes = JSON.stringify({
+  sourcePage: '/contact',
+  attachmentTypes: ['application/pdf'],
+  attachmentSizes: [1200],
+  attachmentReferences: ['contacts/older/reference.pdf']
+});
+const internalNotesResponse = await handleLoadInquiryRequest(loadRequest('internal-notes'), env, async () => {
+  return new Response(JSON.stringify({
+    ok: true,
+    record: {
+      recordId: 'internal-notes',
+      status: '見積作成中',
+      estimateNotes: '',
+      notes: internalNotes,
+      attachmentNames: JSON.stringify(['reference.pdf']),
+      attachmentMetadata: [{
+        name: 'reference.pdf',
+        type: 'application/pdf',
+        size: 1200,
+        reference: 'contacts/older/reference.pdf'
+      }],
+      sourcePage: '/contact'
+    }
+  }), { headers: { 'Content-Type': 'application/json' } });
+}, undefined, allowAccess);
+const internalLoaded = (await internalNotesResponse.json()).record;
+assert.equal(internalLoaded.estimateNotes, '');
+assert.equal(internalLoaded.notes, internalNotes);
+assert.deepEqual(internalLoaded.attachmentNames, ['reference.pdf']);
+assert.equal(internalLoaded.attachmentMetadata[0].reference, 'contacts/older/reference.pdf');
 
 const missing = await handleLoadInquiryRequest(loadRequest('missing'), env, async () => {
   return new Response(JSON.stringify({ ok: false, error: 'record_not_found' }), {
