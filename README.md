@@ -63,11 +63,13 @@ Apps Script側は既存の見積保存処理と共存させ、`saveInquiry`を�
 1. Cloudflare Pagesの`Settings > General > Enable access policy`でPreview deploymentをAccess保護する
 2. Preview環境変数`CF_ACCESS_TEAM_DOMAIN`へAccessのチーム名を登録する（例：`example`）
 3. Preview環境変数`CF_ACCESS_AUD`へAccess ApplicationのAudience (AUD) Tagを登録する
-4. Apps Scriptへ`listPendingInquiries`と`claimInquiry`を追加し、Webアプリを新しいバージョンとして再デプロイする
+4. Apps Scriptへ`listPendingInquiries`、`claimInquiry`、`listActiveInquiries`、`loadInquiry`、`verifyEstimateIssue`を追加し、Webアプリを新しいバージョンとして再デプロイする
 
 設定がない場合、未対応案件APIは403を返します。見積フォームのローカル編集、JSON、PDF、既存の保存機能は停止しません。
 
 `claimInquiry`はApps Scriptの`LockService`内でstatusが「未対応」であることを確認してから「確認中」へ変更します。同じ案件を複数画面から開始した場合、先に取得した画面だけが成功し、後続は409になります。
+
+`verifyEstimateIssue`は、PDF発行情報の保存後に応答がタイムアウトまたは不正だった場合の読取専用確認です。`recordId`で同じ行を取得し、`status`・`pdfIssuedAt`・`quoteNumber`だけを返します。再保存は行わないため、確認処理による重複行は発生しません。
 
 ## 問い合わせデータ
 
