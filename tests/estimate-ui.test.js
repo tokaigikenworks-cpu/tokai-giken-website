@@ -215,6 +215,9 @@ assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-form-grid > label
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet \.quote-footer[\s\S]*width: 100%[\s\S]*margin: auto 0 0/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-notes[\s\S]*flex: 1 1 0/);
 assert.match(styles, /@media print[\s\S]*\.quote-sheet[\s\S]*width: 210mm/);
+assert.match(styles, /@media print[\s\S]*\.pending-queue-panel,[\s\S]*\.active-queue-panel,[\s\S]*\.active-inquiry-banner,[\s\S]*\.current-inquiry-panel,[\s\S]*display: none !important/);
+assert.match(styles, /@media print[\s\S]*main > :not\(\.estimate-workspace\),[\s\S]*\.estimate-workspace > :not\(\.quote-preview-column\),[\s\S]*\.quote-preview-column > :not\(#quote-preview\)/);
+assert.match(styles, /@media print[\s\S]*main \{[\s\S]*width: 210mm[\s\S]*padding: 0/);
 assert.doesNotMatch(styles, /overflow-x:\s*hidden/);
 assert.match(script, /outputFormat: fields\.outputFormat\.value\.trim\(\)/);
 
