@@ -4,7 +4,7 @@
  * 既存doPost(e)でSecret検証とenvironmentから対象シートを決定した後、
  * 次のように呼び出してください。
  *
- * if (['listPendingInquiries', 'claimInquiry', 'listActiveInquiries', 'loadInquiry'].indexOf(payload.action) !== -1) {
+ * if (['listPendingInquiries', 'claimInquiry', 'listActiveInquiries', 'loadInquiry', 'verifyEstimateIssue'].indexOf(payload.action) !== -1) {
  *   return jsonResponse_(handlePendingQueueAction_(payload, targetSheet));
  * }
  *
@@ -28,6 +28,9 @@ function handlePendingQueueAction_(payload, targetSheet) {
   }
   if (payload.action === 'loadInquiry') {
     return loadInquiry_(targetSheet, payload.recordId);
+  }
+  if (payload.action === 'verifyEstimateIssue') {
+    return verifyEstimateIssue_(targetSheet, payload.recordId);
   }
   return { ok: false, error: 'unsupported_action' };
 }
@@ -156,6 +159,36 @@ function loadInquiry_(sheet, recordId) {
       return { ok: false, error: 'invalid_status', status: status };
     }
     return { ok: true, record: pendingQueueRowRecord_(headers, values[index]) };
+  }
+  return { ok: false, error: 'record_not_found' };
+}
+
+function verifyEstimateIssue_(sheet, recordId) {
+  var normalizedRecordId = String(recordId || '').trim();
+  if (!normalizedRecordId) return { ok: false, error: 'invalid_record_id' };
+
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { ok: false, error: 'record_not_found' };
+  var headers = values[0].map(String);
+  var map = pendingQueueHeaderMap_(headers);
+  if (map.recordId == null || map.status == null) {
+    return { ok: false, error: 'required_headers_missing' };
+  }
+
+  for (var index = 1; index < values.length; index += 1) {
+    if (String(values[index][map.recordId] || '').trim() !== normalizedRecordId) continue;
+    var record = pendingQueueRowRecord_(headers, values[index]);
+    return {
+      ok: true,
+      record: {
+        recordId: record.recordId,
+        status: record.status,
+        pdfIssuedAt: record.pdfIssuedAt,
+        quoteNumber: record.quoteNumber,
+        updatedAt: record.updatedAt,
+        lastSheetSavedAt: record.lastSheetSavedAt
+      }
+    };
   }
   return { ok: false, error: 'record_not_found' };
 }
