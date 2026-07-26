@@ -16,6 +16,7 @@ const printTitles = [];
 let apiRequest = null;
 const sheetRequests = [];
 const claimRequests = [];
+let activeListRequests = 0;
 const internalInquiryNotes = JSON.stringify({
   sourcePage: '/contact',
   attachmentTypes: [],
@@ -77,6 +78,7 @@ dom.window.fetch = async (url, options) => {
     };
   }
   if (url === '/api/active-inquiries') {
+    activeListRequests += 1;
     const items = pendingRecords.filter((record) => record.status === '確認中' || record.status === '見積作成中');
     return {
       ok: true,
@@ -487,6 +489,18 @@ async function testPendingQueueIntegration() {
   assert.match(document.querySelector('#imported-attachment-list').textContent, /reference\.step/);
   assert.match(document.querySelector('#imported-attachment-list').textContent, /contacts\/pending-record-1/);
 
+  const activeListRequestsBeforePdf = activeListRequests;
+  document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pendingRecords[0].status, '見積提出済み');
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：0件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 0);
+  assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
+  assert.equal(document.querySelector('#open-next-pending').hidden, true);
+  assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件はありません/);
+  assert.ok(activeListRequests > activeListRequestsBeforePdf);
+
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -609,7 +623,7 @@ async function testApiIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#sheet-save-status').dataset.state, 'error');
   assert.equal(document.querySelector('#project-name').value, projectBeforeFailure);
-  assert.equal(printCalls, 2);
+  assert.equal(printCalls, 3);
 }
 
 testPendingQueueIntegration()
