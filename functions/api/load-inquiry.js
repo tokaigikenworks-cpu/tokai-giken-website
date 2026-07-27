@@ -2,6 +2,7 @@ import {
   jsonResponse,
   normalizeLoadedRecord,
   postToSheets,
+  queueAccessGranted,
   verifyQueueAccess
 } from './_pending-inquiries.js';
 
@@ -9,7 +10,9 @@ const ACTIVE_STATUSES = new Set(['確認中', '見積作成中']);
 
 export async function handleLoadInquiryRequest(request, env = {}, fetchImpl = fetch, timeoutMs, accessVerifier = verifyQueueAccess) {
   if (request.method !== 'POST') return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
-  if (!await accessVerifier(request, env)) return jsonResponse({ ok: false, error: 'access_required' }, 403);
+  if (!await queueAccessGranted(request, env, fetchImpl, accessVerifier)) {
+    return jsonResponse({ ok: false, error: 'access_required' }, 403);
+  }
   if (!(request.headers.get('Content-Type') || '').toLowerCase().startsWith('application/json')) {
     return jsonResponse({ ok: false, error: 'unsupported_media_type' }, 415);
   }

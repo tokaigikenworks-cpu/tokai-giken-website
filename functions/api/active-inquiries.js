@@ -2,12 +2,15 @@ import {
   jsonResponse,
   normalizeActiveList,
   postToSheets,
+  queueAccessGranted,
   verifyQueueAccess
 } from './_pending-inquiries.js';
 
 export async function handleActiveInquiriesRequest(request, env = {}, fetchImpl = fetch, timeoutMs, accessVerifier = verifyQueueAccess) {
   if (request.method !== 'GET') return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
-  if (!await accessVerifier(request, env)) return jsonResponse({ ok: false, error: 'access_required' }, 403);
+  if (!await queueAccessGranted(request, env, fetchImpl, accessVerifier)) {
+    return jsonResponse({ ok: false, error: 'access_required' }, 403);
+  }
 
   const forwarded = await postToSheets(env, {
     action: 'listActiveInquiries',

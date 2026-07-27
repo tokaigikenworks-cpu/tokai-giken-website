@@ -2,6 +2,25 @@ const SHEETS_TIMEOUT_MS = 10000;
 const MAX_PENDING_ITEMS = 100;
 let accessKeysCache = null;
 
+const ACCESS_VERIFICATION_REASONS = new Set([
+  'missing_access_jwt',
+  'missing_authenticated_email',
+  'missing_access_aud',
+  'missing_team_domain',
+  'invalid_jwt_format',
+  'invalid_jwt_header',
+  'issuer_mismatch',
+  'audience_mismatch',
+  'token_expired',
+  'token_not_active',
+  'email_mismatch',
+  'access_cert_fetch_failed',
+  'signing_key_not_found',
+  'signature_invalid',
+  'access_verification_error',
+  'access_ok'
+]);
+
 export function jsonResponse(body, status) {
   return new Response(JSON.stringify(body), {
     status,
@@ -41,18 +60,29 @@ function accessIssuer(env) {
 async function accessKey(issuer, kid, fetchImpl) {
   const now = Date.now();
   if (!accessKeysCache || accessKeysCache.issuer !== issuer || accessKeysCache.expiresAt < now) {
-    const response = await fetchImpl(`${issuer}/cdn-cgi/access/certs`, {
-      headers: { Accept: 'application/json' }
-    });
-    if (!response.ok) return null;
-    const result = await response.json();
-    accessKeysCache = {
-      issuer,
-      expiresAt: now + (60 * 60 * 1000),
-      keys: Array.isArray(result.keys) ? result.keys : []
-    };
+    try {
+      const response = await fetchImpl(`${issuer}/cdn-cgi/access/certs`, {
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) return { ok: false, reason: 'access_cert_fetch_failed' };
+      const result = await response.json();
+      accessKeysCache = {
+        issuer,
+        expiresAt: now + (60 * 60 * 1000),
+        keys: Array.isArray(result.keys) ? result.keys : []
+      };
+    } catch {
+      return { ok: false, reason: 'access_cert_fetch_failed' };
+    }
   }
-  return accessKeysCache.keys.find((key) => key.kid === kid) || null;
+  const key = accessKeysCache.keys.find((candidate) => candidate.kid === kid) || null;
+  return key
+    ? { ok: true, key }
+    : { ok: false, reason: 'signing_key_not_found' };
+}
+
+function accessVerificationResult(ok, reason) {
+  return { ok, reason };
 }
 
 export async function verifyQueueAccess(request, env = {}, fetchImpl = fetch) {
@@ -60,41 +90,90 @@ export async function verifyQueueAccess(request, env = {}, fetchImpl = fetch) {
   const authenticatedEmail = String(request.headers.get('Cf-Access-Authenticated-User-Email') || '').trim().toLowerCase();
   const audience = String(env.CF_ACCESS_AUD || '').trim();
   const issuer = accessIssuer(env);
-  if (!token || !authenticatedEmail || !audience || !issuer) return false;
+  if (!token) return accessVerificationResult(false, 'missing_access_jwt');
+  if (!authenticatedEmail) return accessVerificationResult(false, 'missing_authenticated_email');
+  if (!audience) return accessVerificationResult(false, 'missing_access_aud');
+  if (!issuer) return accessVerificationResult(false, 'missing_team_domain');
 
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3 || parts.some((part) => !part)) {
+    return accessVerificationResult(false, 'invalid_jwt_format');
+  }
   const header = parseJwtPart(parts[0]);
   const payload = parseJwtPart(parts[1]);
-  if (!header || !payload || header.alg !== 'RS256' || !header.kid) return false;
+  if (!header || header.alg !== 'RS256' || !header.kid) {
+    return accessVerificationResult(false, 'invalid_jwt_header');
+  }
+  if (!payload) return accessVerificationResult(false, 'invalid_jwt_format');
 
   const now = Math.floor(Date.now() / 1000);
   const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-  if (payload.iss !== issuer || !audiences.includes(audience)) return false;
-  if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) <= now) return false;
-  if (payload.nbf != null && Number(payload.nbf) > now + 60) return false;
-  if (String(payload.email || '').trim().toLowerCase() !== authenticatedEmail) return false;
+  if (payload.iss !== issuer) return accessVerificationResult(false, 'issuer_mismatch');
+  if (!audiences.includes(audience)) return accessVerificationResult(false, 'audience_mismatch');
+  if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) <= now) {
+    return accessVerificationResult(false, 'token_expired');
+  }
+  if (payload.nbf != null && !Number.isFinite(Number(payload.nbf))) {
+    return accessVerificationResult(false, 'invalid_jwt_format');
+  }
+  if (payload.nbf != null && Number(payload.nbf) > now + 60) {
+    return accessVerificationResult(false, 'token_not_active');
+  }
+  if (String(payload.email || '').trim().toLowerCase() !== authenticatedEmail) {
+    return accessVerificationResult(false, 'email_mismatch');
+  }
 
   try {
-    const jwk = await accessKey(issuer, header.kid, fetchImpl);
-    if (!jwk) return false;
+    const keyResult = await accessKey(issuer, header.kid, fetchImpl);
+    if (!keyResult.ok) return accessVerificationResult(false, keyResult.reason);
     const key = await crypto.subtle.importKey(
       'jwk',
-      jwk,
+      keyResult.key,
       { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
       false,
       ['verify']
     );
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    return await crypto.subtle.verify(
+    const signature = base64UrlBytes(parts[2]);
+    const verified = await crypto.subtle.verify(
       { name: 'RSASSA-PKCS1-v1_5' },
       key,
-      base64UrlBytes(parts[2]),
+      signature,
       signed
     );
+    return verified
+      ? accessVerificationResult(true, 'access_ok')
+      : accessVerificationResult(false, 'signature_invalid');
   } catch {
-    return false;
+    return accessVerificationResult(false, 'access_verification_error');
   }
+}
+
+function normalizedAccessVerification(value) {
+  if (value === true) return accessVerificationResult(true, 'access_ok');
+  if (value === false || !value || typeof value !== 'object') {
+    return accessVerificationResult(false, 'access_verification_error');
+  }
+  const reason = ACCESS_VERIFICATION_REASONS.has(value.reason)
+    ? value.reason
+    : 'access_verification_error';
+  return accessVerificationResult(value.ok === true, value.ok === true ? 'access_ok' : reason);
+}
+
+export async function queueAccessGranted(
+  request,
+  env = {},
+  fetchImpl = fetch,
+  accessVerifier = verifyQueueAccess
+) {
+  let result;
+  try {
+    result = normalizedAccessVerification(await accessVerifier(request, env, fetchImpl));
+  } catch {
+    result = accessVerificationResult(false, 'access_verification_error');
+  }
+  if (!result.ok) console.warn(`access_verification_reason=${result.reason}`);
+  return result.ok;
 }
 
 function text(value, max = 5000) {
