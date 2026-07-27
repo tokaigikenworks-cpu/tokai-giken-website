@@ -49,7 +49,7 @@ const verifiedAccess = await verifyQueueAccess(new Request('https://preview.exam
 }, async () => new Response(JSON.stringify({ keys: [accessJwk] }), {
   headers: { 'Content-Type': 'application/json' }
 }));
-assert.equal(verifiedAccess, true);
+assert.deepEqual(verifiedAccess, { ok: true, reason: 'access_ok' });
 
 const pendingRequest = (headers = accessHeaders) => new Request('https://preview.example.test/api/pending-inquiries', {
   method: 'GET',
@@ -103,11 +103,16 @@ assert.equal(listPayload.action, 'listPendingInquiries');
 assert.equal(listPayload.environment, 'preview');
 assert.equal(listPayload.secret, 'shared-secret');
 
+const accessDiagnostics = [];
+const originalWarn = console.warn;
+console.warn = (message) => accessDiagnostics.push(message);
 const noAccess = await handlePendingInquiriesRequest(pendingRequest({}), env, async () => {
   throw new Error('must not call Sheets without Access');
-}, undefined, async () => false);
+}, undefined, async () => ({ ok: false, reason: 'missing_access_jwt' }));
+console.warn = originalWarn;
 assert.equal(noAccess.status, 403);
-assert.equal((await noAccess.json()).error, 'access_required');
+assert.deepEqual(await noAccess.json(), { ok: false, error: 'access_required' });
+assert.deepEqual(accessDiagnostics, ['access_verification_reason=missing_access_jwt']);
 
 const wrongListMethod = await handlePendingInquiriesRequest(new Request('https://preview.example.test/api/pending-inquiries', {
   method: 'POST',
