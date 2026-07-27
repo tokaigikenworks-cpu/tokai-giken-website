@@ -73,7 +73,6 @@ async function expectReason(request, env, reason, fetchImpl = async () => certRe
 }
 
 await expectReason(accessRequest(null), accessEnv(), 'missing_access_jwt');
-await expectReason(accessRequest('a.b.c', null), accessEnv(), 'missing_authenticated_email');
 await expectReason(accessRequest('a.b.c'), accessEnv('test-team', ''), 'missing_access_aud');
 await expectReason(accessRequest('a.b.c'), accessEnv('', 'test-audience'), 'missing_team_domain');
 await expectReason(accessRequest('not-a-jwt'), accessEnv(), 'invalid_jwt_format');
@@ -109,6 +108,32 @@ await expectReason(
   accessRequest(await signedToken({ email: 'different@example.com' })),
   accessEnv(),
   'email_mismatch'
+);
+
+const missingEmailToken = await signedToken({
+  team: 'missing-email-team',
+  payload: {
+    iss: 'https://missing-email-team.cloudflareaccess.com',
+    email: null
+  }
+});
+await expectReason(
+  accessRequest(missingEmailToken, null),
+  accessEnv('missing-email-team'),
+  'missing_authenticated_email'
+);
+
+const missingTokenEmailWithHeader = await signedToken({
+  team: 'missing-token-email-team',
+  payload: {
+    iss: 'https://missing-token-email-team.cloudflareaccess.com',
+    email: null
+  }
+});
+await expectReason(
+  accessRequest(missingTokenEmailWithHeader),
+  accessEnv('missing-token-email-team'),
+  'missing_token_email'
 );
 
 const certFailureToken = await signedToken({
@@ -151,6 +176,16 @@ const validToken = await signedToken({
 await expectReason(
   accessRequest(validToken),
   accessEnv('valid-team'),
+  'access_ok'
+);
+
+const validTokenWithoutEmailHeader = await signedToken({
+  team: 'valid-no-email-header-team',
+  payload: { iss: 'https://valid-no-email-header-team.cloudflareaccess.com' }
+});
+await expectReason(
+  accessRequest(validTokenWithoutEmailHeader, null),
+  accessEnv('valid-no-email-header-team'),
   'access_ok'
 );
 
