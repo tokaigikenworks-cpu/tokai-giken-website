@@ -5,6 +5,7 @@ let accessKeysCache = null;
 const ACCESS_VERIFICATION_REASONS = new Set([
   'missing_access_jwt',
   'missing_authenticated_email',
+  'missing_token_email',
   'missing_access_aud',
   'missing_team_domain',
   'invalid_jwt_format',
@@ -91,7 +92,6 @@ export async function verifyQueueAccess(request, env = {}, fetchImpl = fetch) {
   const audience = String(env.CF_ACCESS_AUD || '').trim();
   const issuer = accessIssuer(env);
   if (!token) return accessVerificationResult(false, 'missing_access_jwt');
-  if (!authenticatedEmail) return accessVerificationResult(false, 'missing_authenticated_email');
   if (!audience) return accessVerificationResult(false, 'missing_access_aud');
   if (!issuer) return accessVerificationResult(false, 'missing_team_domain');
 
@@ -119,9 +119,6 @@ export async function verifyQueueAccess(request, env = {}, fetchImpl = fetch) {
   if (payload.nbf != null && Number(payload.nbf) > now + 60) {
     return accessVerificationResult(false, 'token_not_active');
   }
-  if (String(payload.email || '').trim().toLowerCase() !== authenticatedEmail) {
-    return accessVerificationResult(false, 'email_mismatch');
-  }
 
   try {
     const keyResult = await accessKey(issuer, header.kid, fetchImpl);
@@ -141,9 +138,19 @@ export async function verifyQueueAccess(request, env = {}, fetchImpl = fetch) {
       signature,
       signed
     );
-    return verified
-      ? accessVerificationResult(true, 'access_ok')
-      : accessVerificationResult(false, 'signature_invalid');
+    if (!verified) return accessVerificationResult(false, 'signature_invalid');
+
+    const tokenEmail = String(payload.email || '').trim().toLowerCase();
+    if (!tokenEmail) {
+      return accessVerificationResult(
+        false,
+        authenticatedEmail ? 'missing_token_email' : 'missing_authenticated_email'
+      );
+    }
+    if (authenticatedEmail && tokenEmail !== authenticatedEmail) {
+      return accessVerificationResult(false, 'email_mismatch');
+    }
+    return accessVerificationResult(true, 'access_ok');
   } catch {
     return accessVerificationResult(false, 'access_verification_error');
   }
