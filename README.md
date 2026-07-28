@@ -52,6 +52,10 @@ Apps Script側は既存の見積保存処理と共存させ、`saveInquiry`を�
 
 `quoteClientName`, `originalProjectName`, `estimateProjectName`, `estimateInquiryText`, `estimateDelivery`, `estimateNotes`
 
+取引条件・免責事項の案内版と案件固有条件を保持するため、次の列も末尾へ追加してください。
+
+`termsDocumentName`, `termsVersion`, `termsPublishedAt`, `termsUrl`, `termsAttachmentFileName`, `termsSentAt`, `termsSentMethod`, `individualConditionsJson`
+
 共有Secretの検証、environmentごとの保存先固定、recordIdによるupsert、個人情報をLoggerへ出力しない設定が必要です。`POST /api/save-inquiry`はサーバー内部用であり、`X-Inquiry-Internal-Secret`に共有Secretがない直接呼び出しを拒否します。
 
 ### 見積ツールの未対応案件キュー

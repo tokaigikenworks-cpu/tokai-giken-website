@@ -56,10 +56,11 @@ function pendingQueueRowRecord_(headers, row) {
       record.attachmentMetadata = [];
     }
   }
-  ['itemsJson', 'apiWarnings', 'attachmentNames', 'attachmentReferences'].forEach(function (key) {
+  ['itemsJson', 'apiWarnings', 'attachmentNames', 'attachmentReferences', 'individualConditionsJson'].forEach(function (key) {
     if (!record[key] || Array.isArray(record[key])) return;
     try {
-      record[key === 'itemsJson' ? 'items' : key] = JSON.parse(String(record[key]));
+      var outputKey = key === 'itemsJson' ? 'items' : (key === 'individualConditionsJson' ? 'individualConditions' : key);
+      record[outputKey] = JSON.parse(String(record[key]));
     } catch (error) {
       if (key === 'itemsJson') record.items = [];
     }
@@ -113,7 +114,9 @@ function listActiveInquiries_(sheet, requestedLimit) {
   var items = values.slice(1).map(function (row) {
     return pendingQueueRowRecord_(headers, row);
   }).filter(function (record) {
-    return String(record.recordId || '').trim() && activeStatuses[String(record.status || '').trim()];
+    var status = String(record.status || '').trim();
+    var issuedAwaitingTerms = status === '見積提出済み' && !String(record.termsSentAt || '').trim();
+    return String(record.recordId || '').trim() && (activeStatuses[status] || issuedAwaitingTerms);
   }).sort(function (left, right) {
     return pendingQueueTimestamp_(left) - pendingQueueTimestamp_(right);
   });
@@ -133,6 +136,7 @@ function listActiveInquiries_(sheet, requestedLimit) {
         projectName: record.estimateProjectName || record.projectName,
         status: record.status,
         quoteNumber: record.quoteNumber,
+        termsSentAt: record.termsSentAt,
         inquiryText: record.estimateInquiryText || record.inquiryText,
         attachmentCount: record.attachmentCount
       };
@@ -155,7 +159,8 @@ function loadInquiry_(sheet, recordId) {
   for (var index = 1; index < values.length; index += 1) {
     if (String(values[index][map.recordId] || '').trim() !== normalizedRecordId) continue;
     var status = String(values[index][map.status] || '').trim();
-    if (status !== '確認中' && status !== '見積作成中') {
+    var issuedAwaitingTerms = status === '見積提出済み' && !String(values[index][map.termsSentAt] || '').trim();
+    if (status !== '確認中' && status !== '見積作成中' && !issuedAwaitingTerms) {
       return { ok: false, error: 'invalid_status', status: status };
     }
     return { ok: true, record: pendingQueueRowRecord_(headers, values[index]) };

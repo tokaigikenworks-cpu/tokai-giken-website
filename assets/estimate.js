@@ -61,6 +61,60 @@
       note: '着手金のご入金確認後に業務を開始し、成果物の最終確認後に残金50％をご請求します。\n残金のご入金確認後、正式な最終データを納品します。'
     }
   };
+  const DEFAULT_TERMS_CONFIG = {
+    documentName: 'トカイ技研 取引条件・免責事項',
+    version: '統合案',
+    publishedAt: '2026-07-28',
+    url: 'documents/tokai-giken-terms-2026-07-28.pdf',
+    attachmentFileName: 'トカイ技研_取引条件・免責事項_法務書体版.pdf',
+    preNoticeItems: [
+      '正式な作業範囲、納品物、データ形式および保証範囲は、発注確認書により確定します。',
+      '試作、3Dスキャン、現物測定およびCAD再構築には、対象物や製造方法に応じた誤差や制約があります。',
+      '確認用の画像、動画、図面および閲覧用データは、正式な納品物ではありません。',
+      '編集または製造に利用できるSTL、STEPその他の実用データは、発注確認書に記載し、原則として残金入金後に納品します。',
+      '正式発注前に、別紙「トカイ技研 取引条件・免責事項」をご確認ください。'
+    ]
+  };
+  const INDIVIDUAL_CONDITION_LABELS = {
+    expectedDeliveryFormat: '想定する納品形式',
+    precisionGuaranteeAreas: '精度保証を行う箇所',
+    physicalInspection: '現物確認',
+    productStage: '試作物か最終製品か',
+    fitVerificationScope: '車両・機械への適合確認範囲',
+    customerProperty: '顧客からの預かり品',
+    irreplaceableProperty: '高額・希少・代替不能品',
+    thirdPartyProduct: '第三者製品のスキャン・再構築',
+    legalComplianceScope: '法令適合性確認'
+  };
+
+  function normalizedTermsConfig(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const noticeItems = Array.isArray(source.preNoticeItems) && source.preNoticeItems.length
+      ? source.preNoticeItems.map(String)
+      : DEFAULT_TERMS_CONFIG.preNoticeItems.slice();
+    return {
+      documentName: String(source.documentName || DEFAULT_TERMS_CONFIG.documentName),
+      version: String(source.version || DEFAULT_TERMS_CONFIG.version),
+      publishedAt: String(source.publishedAt || DEFAULT_TERMS_CONFIG.publishedAt),
+      url: String(source.url || DEFAULT_TERMS_CONFIG.url),
+      attachmentFileName: String(source.attachmentFileName || DEFAULT_TERMS_CONFIG.attachmentFileName),
+      preNoticeItems: noticeItems
+    };
+  }
+
+  function termsVersionLabel(value) {
+    const version = String(value || '').trim();
+    return /^\d+$/.test(version) ? '第' + version + '版' : version;
+  }
+
+  function meaningfulIndividualConditions(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    return Object.keys(INDIVIDUAL_CONDITION_LABELS).reduce(function (result, key) {
+      const normalized = String(source[key] || '').trim();
+      if (normalized) result[key] = normalized;
+      return result;
+    }, {});
+  }
 
   function recommendPaymentType(category) {
     return category && CATEGORY_ORDER.indexOf(category.code) >= CATEGORY_ORDER.indexOf('D') ? 'split' : 'prepaid';
@@ -262,6 +316,24 @@
       '納品形式：' + (data.outputFormat || '別途協議'),
       '備考：' + (visibleEstimateNotes(data.notes) || DEFAULT_NOTES)
     );
+    const individualConditions = meaningfulIndividualConditions(data.individualConditions);
+    if (Object.keys(individualConditions).length) {
+      lines.push('', '【個別条件】');
+      Object.keys(individualConditions).forEach(function (key) {
+        lines.push(INDIVIDUAL_CONDITION_LABELS[key] + '：' + individualConditions[key]);
+      });
+    }
+    const terms = normalizedTermsConfig(data.terms);
+    lines.push('', '【ご発注前の確認事項】');
+    terms.preNoticeItems.forEach(function (item) { lines.push('・' + item); });
+    lines.push(
+      '',
+      '適用予定文書：「' + terms.documentName + '」',
+      termsVersionLabel(terms.version) + '／' + formatDate(terms.publishedAt),
+      '参照先：' + (terms.url || terms.attachmentFileName),
+      '正式発注時には、発注確認書により適用条件を確定します。',
+      '見積書の受領・閲覧だけでは正式発注になりません。'
+    );
     return lines.join('\n');
   }
 
@@ -281,6 +353,9 @@
     formatQuoteDate,
     makeQuoteNumber,
     buildSummary,
+    normalizedTermsConfig,
+    meaningfulIndividualConditions,
+    INDIVIDUAL_CONDITION_LABELS,
     visibleEstimateNotes,
     inferPurpose
   };
@@ -316,6 +391,17 @@
     outputFormat: byId('output-format'),
     notes: byId('notes')
   };
+  const individualConditionFields = {
+    expectedDeliveryFormat: byId('condition-delivery-format'),
+    precisionGuaranteeAreas: byId('condition-precision-scope'),
+    physicalInspection: byId('condition-physical-inspection'),
+    productStage: byId('condition-product-stage'),
+    fitVerificationScope: byId('condition-fit-scope'),
+    customerProperty: byId('condition-customer-property'),
+    irreplaceableProperty: byId('condition-irreplaceable-property'),
+    thirdPartyProduct: byId('condition-third-party-product'),
+    legalComplianceScope: byId('condition-legal-compliance')
+  };
   const classificationFields = [
     fields.inquiryText,
     fields.purpose,
@@ -348,6 +434,10 @@
   let activeInquiries = [];
   let activeInquiryCount = 0;
   let activeQueueLoading = false;
+  const configuredTerms = normalizedTermsConfig(root.TOKAI_TERMS_CONFIG);
+  let termsSnapshot = normalizedTermsConfig(configuredTerms);
+  let termsSentAt = '';
+  let termsSentMethod = '';
 
   const SEQUENCE_STORAGE_PREFIX = 'estimate-sequence-';
 
@@ -368,6 +458,24 @@
     const status = byId('sheet-save-status');
     status.dataset.state = state;
     status.textContent = message;
+  }
+
+  function setTermsSendStatus(state, message) {
+    const status = byId('terms-send-status');
+    status.dataset.state = state;
+    status.textContent = message;
+  }
+
+  function updateTermsEditor() {
+    setText('terms-editor-document-name', termsSnapshot.documentName);
+    setText('terms-editor-document-meta', termsVersionLabel(termsSnapshot.version) + '／' + formatDate(termsSnapshot.publishedAt));
+    const link = byId('terms-editor-link');
+    link.href = termsSnapshot.url;
+    link.textContent = '全文PDFを確認';
+    setTermsSendStatus(
+      termsSentAt ? 'saved' : 'unsaved',
+      termsSentAt ? '送付済み　' + termsSentAt + '／' + termsSentMethod : '未送付'
+    );
   }
 
   function pendingReceiptNumber(record) {
@@ -576,7 +684,7 @@
 
   function loadedInquiryData(record) {
     return {
-      version: 3,
+      version: 4,
       recordId: record.recordId,
       recordStatus: record.status,
       recordCreatedAt: record.createdAt,
@@ -603,6 +711,14 @@
       paymentNote: record.paymentNote,
       outputFormat: record.outputFormat,
       notes: estimateNotesFromRecord(record),
+      termsDocumentName: record.termsDocumentName,
+      termsVersion: record.termsVersion,
+      termsPublishedAt: record.termsPublishedAt,
+      termsUrl: record.termsUrl,
+      termsAttachmentFileName: record.termsAttachmentFileName,
+      termsSentAt: record.termsSentAt,
+      termsSentMethod: record.termsSentMethod,
+      individualConditions: record.individualConditions,
       items: Array.isArray(record.items) ? record.items : [],
       localClass: record.localClass,
       localReason: record.localReason,
@@ -736,6 +852,10 @@
     recordCreatedAt = record.createdAt || record.inquiryReceivedAt || currentTimestamp();
     lastSheetSavedAt = '';
     pdfIssuedAt = '';
+    termsSnapshot = normalizedTermsConfig(configuredTerms);
+    termsSentAt = '';
+    termsSentMethod = '';
+    byId('terms-sent-method').value = '';
     recordStatusManuallyChanged = false;
 
     fields.clientName.value = record.companyName || record.clientName || '';
@@ -751,6 +871,7 @@
     setSelectValueIfAllowed(fields.safety, record.safety, 'unknown');
     setSelectValueIfAllowed(fields.rush, record.rush, 'normal');
     fields.recordStatus.value = '確認中';
+    setIndividualConditions({});
 
     clearApiClassification();
     itemContainer.replaceChildren();
@@ -845,12 +966,17 @@
     recordCreatedAt = currentTimestamp();
     lastSheetSavedAt = '';
     pdfIssuedAt = '';
+    termsSnapshot = normalizedTermsConfig(configuredTerms);
+    termsSentAt = '';
+    termsSentMethod = '';
+    byId('terms-sent-method').value = '';
     recordStatusManuallyChanged = false;
     fields.recordStatus.value = fields.quoteNumber.value.trim() ? '見積作成中' : '未対応';
     activeInquiryRecord = null;
     renderImportedInquiry(null);
     sheetRevision += 1;
     setSheetSaveStatus('unsaved', '未保存');
+    updateTermsEditor();
   }
 
   function sequenceStorageKey(issueDate) {
@@ -913,6 +1039,7 @@
 
   function printEstimate() {
     const quoteNumber = finalizeQuoteNumber();
+    if (!pdfIssuedAt) termsSnapshot = normalizedTermsConfig(configuredTerms);
     pdfIssuedAt = currentTimestamp();
     fields.recordStatus.value = '見積提出済み';
     recordStatusManuallyChanged = false;
@@ -1307,11 +1434,25 @@
     };
   }
 
+  function readIndividualConditions() {
+    return meaningfulIndividualConditions(Object.keys(individualConditionFields).reduce(function (result, key) {
+      result[key] = individualConditionFields[key].value;
+      return result;
+    }, {}));
+  }
+
+  function setIndividualConditions(value) {
+    const source = meaningfulIndividualConditions(value);
+    Object.keys(individualConditionFields).forEach(function (key) {
+      individualConditionFields[key].value = source[key] || '';
+    });
+  }
+
   function readData() {
     const payment = getPaymentDetails(fields.paymentType.value, fields.customPayment.value);
     const classification = classificationSnapshot();
     return {
-      version: 3,
+      version: 4,
       recordId,
       recordStatus: fields.recordStatus.value,
       recordCreatedAt,
@@ -1338,6 +1479,15 @@
       paymentNote: payment.note,
       outputFormat: fields.outputFormat.value.trim(),
       notes: fields.notes.value,
+      terms: normalizedTermsConfig(termsSnapshot),
+      termsDocumentName: termsSnapshot.documentName,
+      termsVersion: termsSnapshot.version,
+      termsPublishedAt: termsSnapshot.publishedAt,
+      termsUrl: termsSnapshot.url,
+      termsAttachmentFileName: termsSnapshot.attachmentFileName,
+      termsSentAt,
+      termsSentMethod,
+      individualConditions: readIndividualConditions(),
       items: filterMeaningfulItems(readItems()),
       localClass: classification.localClass,
       localReason: classification.localReason,
@@ -1427,6 +1577,24 @@
       payment: data.payment,
       paymentNote: data.paymentNote,
       outputFormat: data.outputFormat,
+      termsDocumentName: data.termsDocumentName,
+      termsVersion: data.termsVersion,
+      termsPublishedAt: data.termsPublishedAt,
+      termsUrl: data.termsUrl,
+      termsAttachmentFileName: data.termsAttachmentFileName,
+      termsSentAt: data.termsSentAt,
+      termsSentMethod: data.termsSentMethod,
+      individualConditions: data.individualConditions,
+      individualConditionsJson: JSON.stringify(data.individualConditions),
+      expectedDeliveryFormat: data.individualConditions.expectedDeliveryFormat || '',
+      precisionGuaranteeAreas: data.individualConditions.precisionGuaranteeAreas || '',
+      physicalInspection: data.individualConditions.physicalInspection || '',
+      productStage: data.individualConditions.productStage || '',
+      fitVerificationScope: data.individualConditions.fitVerificationScope || '',
+      customerProperty: data.individualConditions.customerProperty || '',
+      irreplaceableProperty: data.individualConditions.irreplaceableProperty || '',
+      thirdPartyProduct: data.individualConditions.thirdPartyProduct || '',
+      legalComplianceScope: data.individualConditions.legalComplianceScope || '',
       companyName: data.sourceInquiry && data.sourceInquiry.companyName || '',
       email: data.sourceInquiry && data.sourceInquiry.email || '',
       vehicleModel: data.sourceInquiry && data.sourceInquiry.vehicleModel || '',
@@ -1475,13 +1643,21 @@
 
   async function completePdfSave(result, verified) {
     lastSheetSavedAt = String(result.savedAt || result.updatedAt || result.pdfIssuedAt || '');
+    void loadPendingInquiries({ silent: true });
+    await loadActiveInquiries({ silent: true });
+    setStatus(verified
+      ? 'PDF発行情報の保存をスプレッドシートで確認しました。見積書と全文版PDFを送付後、送付記録を登録してください。'
+      : 'PDF発行情報をスプレッドシートへ保存しました。見積書と全文版PDFを送付後、送付記録を登録してください。');
+    setSheetSaveStatus('saved', 'PDF発行情報を保存済み');
+  }
+
+  async function completeTermsSentSave(result) {
+    lastSheetSavedAt = String(result.savedAt || result.updatedAt || '');
     clearCompletedActiveInquiry();
     resetEstimateFormState();
     void loadPendingInquiries({ silent: true });
     await loadActiveInquiries({ silent: true });
-    setStatus(verified
-      ? 'PDF発行情報の保存をスプレッドシートで確認しました'
-      : 'PDF発行情報をスプレッドシートへ保存しました');
+    setStatus('取引条件・免責事項の送付記録を保存しました。');
   }
 
   async function saveEstimateToSheet(options) {
@@ -1511,6 +1687,10 @@
       }
       if (settings.pdf) {
         await completePdfSave(result, Boolean(result.verified));
+        return true;
+      }
+      if (settings.termsSent) {
+        await completeTermsSentSave(result);
         return true;
       }
       lastSheetSavedAt = String(result.savedAt || '');
@@ -1570,6 +1750,40 @@
     });
   }
 
+  function renderIndividualConditions(conditions) {
+    const section = byId('preview-individual-conditions-section');
+    const list = byId('preview-individual-conditions');
+    const meaningful = meaningfulIndividualConditions(conditions);
+    list.replaceChildren();
+    Object.keys(meaningful).forEach(function (key) {
+      const row = document.createElement('div');
+      const term = document.createElement('dt');
+      const detail = document.createElement('dd');
+      term.textContent = INDIVIDUAL_CONDITION_LABELS[key];
+      detail.textContent = meaningful[key];
+      row.append(term, detail);
+      list.appendChild(row);
+    });
+    section.hidden = Object.keys(meaningful).length === 0;
+  }
+
+  function renderTermsNotice(terms) {
+    const snapshot = normalizedTermsConfig(terms);
+    const list = byId('preview-pre-notice-list');
+    list.replaceChildren();
+    snapshot.preNoticeItems.forEach(function (item) {
+      const row = document.createElement('li');
+      row.textContent = item;
+      list.appendChild(row);
+    });
+    setText('preview-terms-name', snapshot.documentName);
+    setText('preview-terms-version', termsVersionLabel(snapshot.version));
+    setText('preview-terms-date', formatDate(snapshot.publishedAt));
+    const link = byId('preview-terms-link');
+    link.href = snapshot.url;
+    link.textContent = '参照先：' + (snapshot.attachmentFileName || snapshot.url);
+  }
+
   function updatePreview() {
     const data = readData();
     const totals = calculateTotals(data.items, data.taxRate);
@@ -1591,6 +1805,9 @@
     setPaymentNote(data.paymentNote || PAYMENT_TERMS.prepaid.note);
     setText('preview-output-format', data.outputFormat || '別途協議');
     setText('preview-notes', visibleEstimateNotes(data.notes) || DEFAULT_NOTES);
+    renderIndividualConditions(data.individualConditions);
+    renderTermsNotice(data.terms);
+    updateTermsEditor();
 
     const previewItems = byId('preview-items');
     previewItems.replaceChildren();
@@ -1664,6 +1881,69 @@
     setStatus('見積内容をクリップボードへコピーしました。');
   }
 
+  async function copyText(value) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch (error) {
+      const helper = document.createElement('textarea');
+      helper.value = value;
+      helper.setAttribute('readonly', '');
+      helper.style.position = 'fixed';
+      helper.style.opacity = '0';
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand('copy');
+      helper.remove();
+    }
+  }
+
+  function buildSendMessage() {
+    const data = readData();
+    const terms = data.terms;
+    const reference = new URL(terms.url, window.location.href).href;
+    return [
+      (data.clientName || 'お客様') + ' ' + (data.honorific || ''),
+      '',
+      'お見積書をお送りしますので、内容をご確認ください。',
+      '正式発注前に、あわせて「' + terms.documentName + '」' + termsVersionLabel(terms.version) + '（' + formatDate(terms.publishedAt) + '）をご確認ください。',
+      'ご不明点や確認事項は、発注前にお知らせください。',
+      '見積書の受領・閲覧だけでは正式発注にはなりません。',
+      '',
+      '取引条件・免責事項：' + reference
+    ].join('\n');
+  }
+
+  async function prepareSendPackage() {
+    const terms = normalizedTermsConfig(termsSnapshot);
+    const link = document.createElement('a');
+    link.href = terms.url;
+    link.download = terms.attachmentFileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    await copyText(buildSendMessage());
+    setTermsSendStatus('unsaved', '全文PDFを保存し、送付案内をコピーしました。送付後に記録してください。');
+    setStatus('送付用の全文PDFと案内文を準備しました。');
+  }
+
+  async function markTermsAsSent() {
+    if (!pdfIssuedAt || fields.recordStatus.value !== '見積提出済み') {
+      setTermsSendStatus('error', '先に見積書を印刷・PDF保存してください。');
+      return;
+    }
+    const method = byId('terms-sent-method').value;
+    if (!method) {
+      setTermsSendStatus('error', '送付方法を選択してください。');
+      return;
+    }
+    termsSentAt = currentTimestamp();
+    termsSentMethod = method;
+    markSheetDirty();
+    setTermsSendStatus('saving', '送付記録を保存中');
+    const saved = await saveEstimateToSheet({ termsSent: true });
+    if (!saved) setTermsSendStatus('error', '送付記録の保存に失敗しました。再試行してください。');
+  }
+
   function downloadJson() {
     const data = readData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1731,6 +2011,17 @@
     recordCreatedAt = String(data.recordCreatedAt || data.createdAt || '').trim() || currentTimestamp();
     lastSheetSavedAt = String(data.lastSheetSavedAt || '').trim();
     pdfIssuedAt = String(data.pdfIssuedAt || '').trim();
+    termsSnapshot = pdfIssuedAt && data.termsVersion
+      ? normalizedTermsConfig({
+        documentName: data.termsDocumentName,
+        version: data.termsVersion,
+        publishedAt: data.termsPublishedAt,
+        url: data.termsUrl,
+        attachmentFileName: data.termsAttachmentFileName
+      })
+      : normalizedTermsConfig(configuredTerms);
+    termsSentAt = String(data.termsSentAt || '').trim();
+    termsSentMethod = String(data.termsSentMethod || '').trim();
     activeInquiryRecord = data.sourceInquiry && typeof data.sourceInquiry === 'object'
       ? Object.assign({}, data.sourceInquiry, { recordId })
       : null;
@@ -1745,6 +2036,8 @@
     setFieldValue('taxRate', data.taxRate == null ? 10 : data.taxRate);
     fields.paymentType.value = paymentType;
     fields.customPayment.value = data.customPayment || (paymentType === 'custom' ? data.payment || '' : '');
+    setIndividualConditions(data.individualConditions);
+    byId('terms-sent-method').value = termsSentMethod;
     const restoredStatus = String(data.recordStatus || data.status || '').trim();
     fields.recordStatus.value = Array.from(fields.recordStatus.options).some(function (option) { return option.value === restoredStatus; })
       ? restoredStatus
@@ -1765,6 +2058,7 @@
     } else {
       setSheetSaveStatus('unsaved', '未保存');
     }
+    updateTermsEditor();
   }
 
   function resetEstimateFormState() {
@@ -1846,6 +2140,8 @@
     }
   });
   byId('copy-summary').addEventListener('click', copySummary);
+  byId('prepare-send-package').addEventListener('click', function () { void prepareSendPackage(); });
+  byId('mark-terms-sent').addEventListener('click', function () { void markTermsAsSent(); });
   byId('save-to-sheet').addEventListener('click', function () { void saveEstimateToSheet(); });
   byId('load-pending-inquiries').addEventListener('click', function () { void loadPendingInquiries(); });
   byId('load-active-inquiries').addEventListener('click', function () { void loadActiveInquiries(); });
