@@ -40,7 +40,8 @@ export async function handleLoadInquiryRequest(request, env = {}, fetchImpl = fe
   if (!record || record.recordId !== recordId) {
     return jsonResponse({ ok: false, error: 'saved_data_corrupt' }, 502);
   }
-  if (!ACTIVE_STATUSES.has(record.status)) {
+  const isIssuedAwaitingTerms = record.status === '見積提出済み' && !record.termsSentAt;
+  if (!ACTIVE_STATUSES.has(record.status) && !isIssuedAwaitingTerms) {
     return jsonResponse({ ok: false, error: 'invalid_status', status: record.status }, 409);
   }
   return jsonResponse({ ok: true, record }, 200);

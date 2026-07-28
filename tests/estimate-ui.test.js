@@ -49,6 +49,7 @@ const pendingRecords = Array.from({ length: 5 }, (_, index) => ({
 }));
 let lastCreatedBlob = null;
 let uuidSequence = 0;
+let copiedText = '';
 dom.window.print = () => {
   printCalls += 1;
   printTitles.push(dom.window.document.title);
@@ -70,6 +71,10 @@ dom.window.URL.createObjectURL = (blob) => {
   return 'blob:estimate-test';
 };
 dom.window.URL.revokeObjectURL = () => {};
+Object.defineProperty(dom.window.navigator, 'clipboard', {
+  configurable: true,
+  value: { writeText: async (value) => { copiedText = value; } }
+});
 dom.window.fetch = async (url, options) => {
   if (url === '/api/pending-inquiries') {
     const items = pendingRecords.filter((record) => record.status === '未対応');
@@ -81,7 +86,11 @@ dom.window.fetch = async (url, options) => {
   }
   if (url === '/api/active-inquiries') {
     activeListRequests += 1;
-    const items = pendingRecords.filter((record) => record.status === '確認中' || record.status === '見積作成中');
+    const items = pendingRecords.filter((record) => (
+      record.status === '確認中'
+      || record.status === '見積作成中'
+      || (record.status === '見積提出済み' && !record.termsSentAt)
+    ));
     return {
       ok: true,
       status: 200,
@@ -156,6 +165,9 @@ dom.window.fetch = async (url, options) => {
       source.status = body.record.status;
       source.pdfIssuedAt = body.record.pdfIssuedAt;
       source.quoteNumber = body.record.quoteNumber;
+      source.termsSentAt = body.record.termsSentAt;
+      source.termsSentMethod = body.record.termsSentMethod;
+      source.termsVersion = body.record.termsVersion;
       source.updatedAt = '2026-07-21T18:05:00Z';
     }
     if (body.record.status === '見積提出済み' && pdfSaveResponseMode === 'timeout-after-save') {
@@ -235,6 +247,18 @@ assert.equal(document.querySelector('#load-pending-inquiries').textContent.trim(
 assert.equal(document.querySelector('#load-active-inquiries').textContent.trim(), '作業中案件を読み込む');
 assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
+assert.equal(document.querySelector('#preview-pre-notice-list').children.length, 5);
+assert.match(document.querySelector('#preview-pre-notice-list').textContent, /発注確認書により確定/);
+assert.equal(document.querySelector('#preview-terms-version').textContent, '統合案');
+assert.equal(document.querySelector('#preview-terms-date').textContent, '2026/07/28');
+assert.match(document.querySelector('#preview-terms-link').getAttribute('href'), /tokai-giken-terms-2026-07-28\.pdf/);
+const termsPdfPath = path.join(root, document.querySelector('#preview-terms-link').getAttribute('href'));
+assert.equal(fs.existsSync(termsPdfPath), true);
+assert.equal(fs.readFileSync(termsPdfPath).subarray(0, 4).toString(), '%PDF');
+assert.ok(html.indexOf('assets/estimate-terms-config.js') < html.indexOf('assets/estimate.js'));
+assert.match(document.querySelector('.quote-terms-reference small').textContent, /受領・閲覧だけでは正式発注になりません/);
+assert.equal(document.querySelector('#preview-individual-conditions-section').hidden, true);
+assert.equal(document.querySelector('#terms-send-status').textContent, '未送付');
 assert.deepEqual(Array.from(document.querySelectorAll('#honorific option'), (option) => option.textContent), ['御中', '様']);
 assert.match(document.querySelector('.recipient-help').textContent, /個人名は「様」/);
 assert.equal(document.querySelector('#copy-summary').textContent.trim(), '見積内容をテキストでコピー');
@@ -262,6 +286,8 @@ assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.tool-form-grid > label
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-sheet \.quote-footer[\s\S]*width: 100%[\s\S]*margin: auto 0 0/);
 assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.quote-notes[\s\S]*flex: 1 1 0/);
 assert.match(styles, /@media print[\s\S]*\.quote-sheet[\s\S]*width: 210mm/);
+assert.match(styles, /\.quote-legal[\s\S]*Noto Serif JP/);
+assert.match(styles, /@media \(max-width: 740px\)[\s\S]*\.send-actions[\s\S]*grid-template-columns: 1fr/);
 assert.match(styles, /@media print[\s\S]*\.pending-queue-panel,[\s\S]*\.active-queue-panel,[\s\S]*\.active-inquiry-banner,[\s\S]*\.current-inquiry-panel,[\s\S]*display: none !important/);
 assert.match(styles, /@media print[\s\S]*main > :not\(\.estimate-workspace\),[\s\S]*\.estimate-workspace > :not\(\.quote-preview-column\),[\s\S]*\.quote-preview-column > :not\(#quote-preview\)/);
 assert.match(styles, /@media print[\s\S]*main \{[\s\S]*width: 210mm[\s\S]*padding: 0/);
@@ -329,6 +355,13 @@ assert.equal(document.querySelector('#preview-honorific').textContent, '様');
 assert.equal(document.querySelector('#preview-project').textContent, '取付部品の設計');
 assert.equal(document.querySelector('#preview-output-format').textContent, 'STL');
 assert.equal(document.querySelector('#preview-total').textContent, '¥220,000');
+document.querySelector('#condition-delivery-format').value = 'STL';
+document.querySelector('#condition-physical-inspection').value = 'あり';
+document.querySelector('#condition-precision-scope').value = '取付穴位置のみ ±0.2 mm';
+document.querySelector('#condition-physical-inspection').dispatchEvent(change);
+assert.equal(document.querySelector('#preview-individual-conditions-section').hidden, false);
+assert.match(document.querySelector('#preview-individual-conditions').textContent, /現物確認あり/);
+assert.match(document.querySelector('#preview-individual-conditions').textContent, /取付穴位置のみ ±0.2 mm/);
 
 document.querySelector('#payment-type').value = 'custom';
 document.querySelector('#payment-type').dispatchEvent(change);
@@ -365,6 +398,14 @@ assert.equal(sheetRequests[0].body.record.status, '見積提出済み');
 assert.match(sheetRequests[0].body.record.pdfIssuedAt, /^\d{4}-\d{2}-\d{2}T/);
 assert.equal(sheetRequests[0].body.record.total, 220000);
 assert.equal(sheetRequests[0].body.record.items.length, 1);
+assert.equal(sheetRequests[0].body.record.termsDocumentName, 'トカイ技研 取引条件・免責事項');
+assert.equal(sheetRequests[0].body.record.termsVersion, '統合案');
+assert.equal(sheetRequests[0].body.record.termsPublishedAt, '2026-07-28');
+assert.equal(sheetRequests[0].body.record.termsUrl, 'documents/tokai-giken-terms-2026-07-28.pdf');
+assert.equal(sheetRequests[0].body.record.termsSentAt, '');
+assert.equal(sheetRequests[0].body.record.individualConditions.physicalInspection, 'あり');
+assert.equal(sheetRequests[0].body.record.individualConditions.precisionGuaranteeAreas, '取付穴位置のみ ±0.2 mm');
+assert.match(sheetRequests[0].body.record.individualConditionsJson, /physicalInspection/);
 assert.equal('secret' in sheetRequests[0].body, false);
 assert.equal('environment' in sheetRequests[0].body, false);
 document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -378,7 +419,7 @@ dom.window.HTMLAnchorElement.prototype.click = function () { jsonDownloadName = 
 document.querySelector('#save-json').click();
 assert.equal(jsonDownloadName, '20260719_1.json');
 const savedVersion3 = JSON.parse(lastCreatedBlob.parts.join(''));
-assert.equal(savedVersion3.version, 3);
+assert.equal(savedVersion3.version, 4);
 assert.equal(savedVersion3.recordId, initialRecordId);
 assert.equal(savedVersion3.recordStatus, '見積提出済み');
 assert.match(savedVersion3.recordCreatedAt, /^\d{4}-\d{2}-\d{2}T/);
@@ -386,6 +427,8 @@ assert.match(savedVersion3.pdfIssuedAt, /^\d{4}-\d{2}-\d{2}T/);
 assert.equal(savedVersion3.apiClass, '');
 assert.equal(savedVersion3.apiResponseMs, '');
 assert.equal(savedVersion3.apiTokens, '');
+assert.equal(savedVersion3.termsVersion, '統合案');
+assert.equal(savedVersion3.individualConditions.physicalInspection, 'あり');
 
 document.querySelector('#reset-estimate').click();
 assert.equal(document.querySelector('#deliverable').value, '');
@@ -422,7 +465,7 @@ Object.defineProperty(loadInput, 'files', {
 loadInput.dispatchEvent(change);
 document.querySelector('#save-json').click();
 const upgradedVersion2 = JSON.parse(lastCreatedBlob.parts.join(''));
-assert.equal(upgradedVersion2.version, 3);
+assert.equal(upgradedVersion2.version, 4);
 assert.ok(upgradedVersion2.recordId);
 assert.notEqual(upgradedVersion2.recordId, initialRecordId);
 assert.equal(quoteNumber.value, '20260718_7');
@@ -542,24 +585,49 @@ async function testPendingQueueIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(pendingRecords[0].status, '見積提出済み');
-  assert.equal(document.querySelector('#active-count').textContent, '作業中：0件');
-  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 0);
-  assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
-  assert.equal(document.querySelector('#open-next-pending').hidden, true);
-  assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件はありません/);
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：1件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 1);
+  assert.equal(document.querySelector('#active-inquiry-banner').hidden, false);
+  assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件が1件/);
   assert.ok(activeListRequests > activeListRequestsBeforePdf);
   assert.deepEqual(verifyRequests.at(-1), {
     recordId: recordIdBeforePdf,
     quoteNumber: quoteNumberBeforePdf
   });
   assert.match(document.querySelector('#action-status').textContent, /保存をスプレッドシートで確認しました/);
+  assert.equal(document.querySelector('#project-name').value, '対象物1');
+  assert.equal(document.querySelector('#record-status').value, '見積提出済み');
+  assert.equal(document.querySelector('#quote-number').value, quoteNumberBeforePdf);
+  assert.match(document.querySelector('#sheet-save-status').textContent, /PDF発行情報を保存済み/);
+  assert.equal(sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).length, 2);
+
+  jsonDownloadName = '';
+  document.querySelector('#prepare-send-package').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(jsonDownloadName, 'トカイ技研_取引条件・免責事項_法務書体版.pdf');
+  assert.match(copiedText, /見積書の受領・閲覧だけでは正式発注にはなりません/);
+  assert.match(copiedText, /tokai-giken-terms-2026-07-28\.pdf/);
+  assert.equal(pendingRecords[0].termsSentAt || '', '');
+
+  document.querySelector('#terms-sent-method').value = 'email_attachment';
+  document.querySelector('#terms-sent-method').dispatchEvent(change);
+  document.querySelector('#mark-terms-sent').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(pendingRecords[0].termsSentAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(pendingRecords[0].termsSentMethod, 'email_attachment');
+  assert.equal(sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).length, 3);
+  assert.equal(document.querySelector('#active-count').textContent, '作業中：0件');
+  assert.equal(document.querySelectorAll('#active-inquiry-list .active-inquiry-card').length, 0);
+  assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
+  assert.equal(document.querySelector('#open-next-pending').hidden, true);
+  assert.match(document.querySelector('#active-queue-status').textContent, /作業中案件はありません/);
   assert.equal(document.querySelector('#project-name').value, '');
   assert.equal(document.querySelector('#record-status').value, '見積作成中');
   assert.notEqual(document.querySelector('#quote-number').value, quoteNumberBeforePdf);
   assert.equal(document.querySelector('#sheet-save-status').textContent, '未保存');
   assert.equal(document.querySelectorAll('#line-items tr').length, 1);
   assert.equal(document.querySelectorAll('#preview-items tr').length, 0);
-  assert.equal(sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).length, 2);
 
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));

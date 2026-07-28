@@ -75,6 +75,9 @@ assert.match(summary, /合計：¥66,000/);
 assert.match(summary, /支払条件：前払い（ご入金確認後に着手）/);
 assert.match(summary, /支払条件補足：ご入金の確認後に業務へ着手いたします。/);
 assert.match(summary, /納品形式：STEP/);
+assert.match(summary, /【ご発注前の確認事項】/);
+assert.match(summary, /見積書の受領・閲覧だけでは正式発注になりません/);
+assert.match(summary, /統合案／2026\/07\/28/);
 
 const splitSummary = engine.buildSummary({
   clientName: '鈴木',
@@ -104,5 +107,25 @@ const internalNotesSummary = engine.buildSummary({
 });
 assert.doesNotMatch(internalNotesSummary, /sourcePage|attachmentNames|reference\.step/);
 assert.match(internalNotesSummary, new RegExp('備考：' + engine.DEFAULT_NOTES));
+
+const conditionSummary = engine.buildSummary({
+  individualConditions: {
+    physicalInspection: 'あり',
+    precisionGuaranteeAreas: '取付穴位置のみ ±0.2 mm'
+  },
+  terms: {
+    documentName: 'テスト取引条件',
+    version: '2',
+    publishedAt: '2026-08-01',
+    url: 'documents/terms-v2.pdf'
+  },
+  items: [],
+  taxRate: 10
+});
+assert.match(conditionSummary, /【個別条件】/);
+assert.match(conditionSummary, /現物確認：あり/);
+assert.match(conditionSummary, /精度保証を行う箇所：取付穴位置のみ ±0.2 mm/);
+assert.match(conditionSummary, /適用予定文書：「テスト取引条件」/);
+assert.match(conditionSummary, /第2版／2026\/08\/01/);
 
 console.log('estimate-engine: all tests passed');

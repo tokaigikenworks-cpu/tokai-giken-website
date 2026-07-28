@@ -14,7 +14,7 @@ export async function handleActiveInquiriesRequest(request, env = {}, fetchImpl 
 
   const forwarded = await postToSheets(env, {
     action: 'listActiveInquiries',
-    statuses: ['確認中', '見積作成中'],
+    statuses: ['確認中', '見積作成中', '見積提出済み'],
     limit: 100
   }, fetchImpl, timeoutMs);
   if (!forwarded.ok) return jsonResponse({ ok: false, error: forwarded.error }, forwarded.status);

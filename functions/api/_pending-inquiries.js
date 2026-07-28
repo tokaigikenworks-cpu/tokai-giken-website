@@ -260,6 +260,17 @@ function jsonList(value, maxItems = 100) {
   }
 }
 
+function jsonObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function numberOrEmpty(value) {
   if (value === '' || value == null) return '';
   return Number.isFinite(Number(value)) ? Number(value) : '';
@@ -300,6 +311,7 @@ export function normalizeActiveRecord(record) {
     quoteNumber: text(record.quoteNumber, 100),
     estimateProjectName: text(record.estimateProjectName || record.projectName, 200),
     updatedAt: text(record.updatedAt || record.lastSheetSavedAt, 50),
+    termsSentAt: text(record.termsSentAt, 50),
     attachmentCount: Number.isFinite(Number(record.attachmentCount)) ? Math.max(0, Number(record.attachmentCount)) : base.attachmentCount
   };
 }
@@ -313,6 +325,18 @@ export function normalizeLoadedRecord(record) {
     unit: text(item && item.unit, 50),
     price: numberOrEmpty(item && (item.price ?? item.unitPrice))
   }));
+  const savedIndividualConditions = jsonObject(record.individualConditions || record.individualConditionsJson);
+  const individualConditions = Object.keys(savedIndividualConditions).length ? savedIndividualConditions : {
+    expectedDeliveryFormat: text(record.expectedDeliveryFormat, 500),
+    precisionGuaranteeAreas: text(record.precisionGuaranteeAreas, 1000),
+    physicalInspection: text(record.physicalInspection, 100),
+    productStage: text(record.productStage, 100),
+    fitVerificationScope: text(record.fitVerificationScope, 1000),
+    customerProperty: text(record.customerProperty, 100),
+    irreplaceableProperty: text(record.irreplaceableProperty, 100),
+    thirdPartyProduct: text(record.thirdPartyProduct, 100),
+    legalComplianceScope: text(record.legalComplianceScope, 100)
+  };
   return {
     ...base,
     honorific: text(record.honorific, 20),
@@ -344,6 +368,14 @@ export function normalizeLoadedRecord(record) {
     payment: text(record.payment || record.paymentTerms, 1000),
     paymentNote: text(record.paymentNote || record.paymentSupplement, 3000),
     outputFormat: text(record.outputFormat || record.deliveryFormat, 500),
+    termsDocumentName: text(record.termsDocumentName, 300),
+    termsVersion: text(record.termsVersion, 100),
+    termsPublishedAt: text(record.termsPublishedAt, 50),
+    termsUrl: text(record.termsUrl, 1000),
+    termsAttachmentFileName: text(record.termsAttachmentFileName, 300),
+    termsSentAt: text(record.termsSentAt, 50),
+    termsSentMethod: text(record.termsSentMethod, 100),
+    individualConditions,
     quoteClientName: text(record.quoteClientName || record.clientName, 200),
     lastSheetSavedAt: text(record.lastSheetSavedAt || record.updatedAt, 50),
     pdfIssuedAt: text(record.pdfIssuedAt, 50)
@@ -373,7 +405,10 @@ export function normalizeActiveList(value) {
   const rawItems = value && Array.isArray(value.items) ? value.items : [];
   const items = rawItems
     .map(normalizeActiveRecord)
-    .filter((record) => record && allowedStatuses.has(record.status))
+    .filter((record) => record && (
+      allowedStatuses.has(record.status)
+      || (record.status === '見積提出済み' && !record.termsSentAt)
+    ))
     .sort((left, right) => pendingTimestamp(left) - pendingTimestamp(right))
     .slice(0, MAX_PENDING_ITEMS);
   const count = Number.isFinite(Number(value && value.count))

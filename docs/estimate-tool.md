@@ -17,6 +17,10 @@
 - 支払条件は前払い・分割払い・個別設定から選択でき、見積書へ支払順序の補足も出力
 - スマホでは入力欄を1列化し、見積明細をカード表示、A4プレビューを比率維持のまま縮小表示
 - スクリーンショットの端末内プレビュー
+- 見積書には「ご発注前の確認事項」の要約、適用予定文書の版番号・改定日・全文PDFリンクを表示
+- 全文版の版情報は `assets/estimate-terms-config.js` で管理し、PDF発行時のスナップショットを案件データへ保存
+- 案件固有の確認事項は共通文と分離して入力・表示・保存
+- 全文PDFの保存と送付案内文のコピー後、実際の送付時刻・方法を明示操作で記録
 - featureプレビューでは `/api/estimate` からOpenAI Responses APIへ接続し、ローカル判定と比較して任意採用
 
 ## APIテスト（featureプレビュー）
@@ -61,3 +65,17 @@ Cloudflare PagesのPreview環境だけに、Secret `OPENAI_API_KEY` と変数 `O
 このリポジトリは静的サイトのため、ファイルを `main` へ入れるだけでは内部ツールを安全に保護できません。本番運用時は、内部ツールを別の非公開構成へ分離するか、Cloudflare Access等で認証を付けます。
 
 OCRやAI要件抽出を追加する場合は、APIキーをブラウザのJavaScriptへ置かず、Cloudflare Worker等のサーバー側からAPIを呼び出します。画像と顧客情報の保存期間・削除方法も、その段階で決めます。
+
+## 取引条件・免責事項の版管理
+
+全文PDFは `documents/tokai-giken-terms-2026-07-28.pdf`、表示名・原本文書の版表記・日付・参照先は `assets/estimate-terms-config.js` で管理します。現行ファイルは原本の「統合案」「作成日：2026年7月28日」をそのまま使用しています。全文を改定するときは既存PDFを上書きせず、新しいファイル名で追加して設定を更新してください。発行済み見積は保存済みの `termsVersion` 等を復元するため、後日の改定で案内版が置き換わりません。
+
+スプレッドシートには次の列を追加してください。
+
+`termsDocumentName`, `termsVersion`, `termsPublishedAt`, `termsUrl`, `termsAttachmentFileName`, `termsSentAt`, `termsSentMethod`, `individualConditionsJson`
+
+案件固有条件を個別列でも集計する場合は次の列を追加できます。
+
+`expectedDeliveryFormat`, `precisionGuaranteeAreas`, `physicalInspection`, `productStage`, `fitVerificationScope`, `customerProperty`, `irreplaceableProperty`, `thirdPartyProduct`, `legalComplianceScope`
+
+`見積提出済み`かつ`termsSentAt`が空の案件は「送付待ち」として作業中一覧へ残します。見積書と全文版PDFを送付後、「送付済みとして記録」を実行すると一覧から完了扱いで外れます。

@@ -284,6 +284,73 @@
           <label class="full-label">備考
             <textarea id="notes" name="notes" rows="6" placeholder="送料、出張、外注加工、特殊材料、追加試作、追加修正などの別途条件を記載します。"></textarea>
           </label>
+
+          <div class="terms-document-editor" aria-labelledby="terms-document-heading">
+            <div>
+              <strong id="terms-document-heading">適用予定の取引条件</strong>
+              <span id="terms-editor-document-name">トカイ技研 取引条件・免責事項</span>
+              <small id="terms-editor-document-meta">統合案／2026/07/28</small>
+            </div>
+            <a id="terms-editor-link" class="text-button" href="documents/tokai-giken-terms-2026-07-28.pdf" target="_blank" rel="noopener">全文PDFを確認</a>
+          </div>
+        </section>
+
+        <section class="tool-panel" aria-labelledby="individual-conditions-heading">
+          <div class="panel-heading">
+            <span>06</span>
+            <div>
+              <p class="eyebrow">CASE CONDITIONS</p>
+              <h2 id="individual-conditions-heading">案件固有の確認事項</h2>
+            </div>
+          </div>
+          <p class="panel-intro">必要な項目だけ入力してください。共通条件とは分けて見積書へ表示します。</p>
+          <div class="tool-form-grid individual-conditions-grid">
+            <label>想定する納品形式<input id="condition-delivery-format" type="text" placeholder="例：STEP / STL / 試作品"></label>
+            <label>精度保証を行う箇所<input id="condition-precision-scope" type="text" placeholder="例：取付穴位置のみ ±0.2 mm"></label>
+            <label>現物確認
+              <select id="condition-physical-inspection"><option value="">未設定</option><option>あり</option><option>なし</option><option>要協議</option></select>
+            </label>
+            <label>成果物の位置づけ
+              <select id="condition-product-stage"><option value="">未設定</option><option>試作物</option><option>最終製品</option><option>要協議</option></select>
+            </label>
+            <label class="full-label">車両・機械への適合確認範囲<input id="condition-fit-scope" type="text" placeholder="例：実車への仮合わせまで／取付作業は対象外"></label>
+            <label>顧客からの預かり品
+              <select id="condition-customer-property"><option value="">未設定</option><option>あり</option><option>なし</option></select>
+            </label>
+            <label>高額・希少・代替不能品
+              <select id="condition-irreplaceable-property"><option value="">未設定</option><option>あり</option><option>なし</option></select>
+            </label>
+            <label>第三者製品のスキャン・再構築
+              <select id="condition-third-party-product"><option value="">未設定</option><option>あり</option><option>なし</option><option>要確認</option></select>
+            </label>
+            <label>法令適合性確認
+              <select id="condition-legal-compliance"><option value="">未設定</option><option>受託する</option><option>受託しない</option><option>要協議</option></select>
+            </label>
+          </div>
+        </section>
+
+        <section class="tool-panel send-panel" aria-labelledby="send-heading">
+          <div class="panel-heading">
+            <span>07</span>
+            <div>
+              <p class="eyebrow">DELIVERY</p>
+              <h2 id="send-heading">見積書の送付</h2>
+            </div>
+          </div>
+          <p class="panel-intro">見積書と全文版PDFを同時に送り、送付後に記録してください。準備操作だけでは送付済みになりません。</p>
+          <div class="send-actions">
+            <button id="prepare-send-package" class="button secondary-button" type="button">全文PDFを保存・送付案内をコピー</button>
+            <label>送付方法
+              <select id="terms-sent-method">
+                <option value="">選択してください</option>
+                <option value="email_attachment">メール添付</option>
+                <option value="email_link">メールでリンク案内</option>
+                <option value="other">その他</option>
+              </select>
+            </label>
+            <button id="mark-terms-sent" class="button sheet-save-button" type="button">送付済みとして記録</button>
+          </div>
+          <p id="terms-send-status" class="sheet-save-status" role="status" aria-live="polite" data-state="unsaved">未送付</p>
         </section>
 
         <div class="tool-actions">
@@ -361,6 +428,23 @@
             <p id="preview-notes">送料、出張確認、外注加工、特殊材料、追加試作等が必要な場合は、事前確認のうえ別途お見積りします。</p>
           </section>
 
+          <section id="preview-individual-conditions-section" class="quote-individual-conditions quote-legal" hidden>
+            <h3>個別条件</h3>
+            <dl id="preview-individual-conditions"></dl>
+          </section>
+
+          <section class="quote-pre-notice quote-legal" aria-labelledby="preview-pre-notice-heading">
+            <h3 id="preview-pre-notice-heading">ご発注前の確認事項</h3>
+            <ul id="preview-pre-notice-list"></ul>
+            <div class="quote-terms-reference">
+              <span>適用予定文書</span>
+              <strong>「<span id="preview-terms-name">トカイ技研 取引条件・免責事項</span>」</strong>
+              <p><span id="preview-terms-version">統合案</span>／<span id="preview-terms-date">2026/07/28</span></p>
+              <a id="preview-terms-link" href="documents/tokai-giken-terms-2026-07-28.pdf">参照先：トカイ技研_取引条件・免責事項_法務書体版.pdf</a>
+              <small>正式発注時には、発注確認書により適用条件を確定します。見積書の受領・閲覧だけでは正式発注になりません。</small>
+            </div>
+          </section>
+
           <footer class="quote-footer">
             <div><strong>トカイ技研</strong><small>3D SCAN / CAD DESIGN / PROTOTYPE</small></div>
             <p>tokai-giken.com</p>
@@ -371,6 +455,7 @@
   </main>
 
   <script src="assets/script.js"></script>
+  <script src="assets/estimate-terms-config.js"></script>
   <script src="assets/estimate.js"></script>
 </body>
 </html>
