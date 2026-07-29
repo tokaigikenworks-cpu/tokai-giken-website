@@ -443,6 +443,11 @@ footer p {
   color: #5b574f;
   margin: 0;
 }
+.flow .flow-conditions {
+  margin-top: 7px;
+  font-size: 12px;
+  color: #6e6960;
+}
 .price {
   display: grid;
   grid-template-columns: 0.8fr 1.2fr;
@@ -603,6 +608,32 @@ footer p {
   color: #777;
   margin-top: 18px;
 }
+.preorder-note {
+  max-width: 760px;
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.preorder-note h2 {
+  margin-bottom: 9px;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+.preorder-note p {
+  margin-bottom: 12px;
+  color: #5f5a52;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.terms-link {
+  color: var(--ink);
+  font-size: 12px;
+  text-underline-offset: 4px;
+}
+.terms-link:focus-visible {
+  outline: 2px solid var(--orange-text);
+  outline-offset: 4px;
+}
 @media (max-width: 740px) {
   .site-header {
     height: 68px;
@@ -696,6 +727,10 @@ footer p {
   }
   .form-section {
     padding-top: 55px;
+  }
+  .preorder-note {
+    margin-top: 32px;
+    padding-top: 20px;
   }
   .form-grid {
     grid-template-columns: 1fr;
