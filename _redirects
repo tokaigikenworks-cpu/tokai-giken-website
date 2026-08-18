@@ -8,9 +8,3 @@
 /contact-complete.html /contact-complete 301
 /estimate.html /estimate 301
 
-# Serve the existing static documents at their canonical extensionless paths.
-/service /service.html 200
-/process /process.html 200
-/contact /contact.html 200
-/contact-complete /contact-complete.html 200
-/estimate /estimate.html 200
