@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tokai-giken.com/sitemap.xml
