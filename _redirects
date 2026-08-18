@@ -1,0 +1,16 @@
+# Canonical public URLs: extensionless paths on https://tokai-giken.com.
+/index.html / 301
+/service.html /service 301
+/process.html /process 301
+/contact.html /contact 301
+
+# Keep non-indexable workflow pages on extensionless URLs as well.
+/contact-complete.html /contact-complete 301
+/estimate.html /estimate 301
+
+# Serve the existing static documents at their canonical extensionless paths.
+/service /service.html 200
+/process /process.html 200
+/contact /contact.html 200
+/contact-complete /contact-complete.html 200
+/estimate /estimate.html 200
