@@ -434,6 +434,10 @@
   let activeInquiries = [];
   let activeInquiryCount = 0;
   let activeQueueLoading = false;
+  let orderCandidates = [];
+  let orderCandidateCount = 0;
+  let orderQueueLoading = false;
+  const orderTransferStates = new Map();
   const configuredTerms = normalizedTermsConfig(root.TOKAI_TERMS_CONFIG);
   let termsSnapshot = normalizedTermsConfig(configuredTerms);
   let termsSentAt = '';
@@ -596,6 +600,187 @@
     const status = byId('active-queue-status');
     status.textContent = message;
     status.dataset.state = state || '';
+  }
+
+  function orderStartEligible(record) {
+    return record.status === '受注' && Boolean(String(record.quoteNumber || '').trim());
+  }
+
+  function applyOrderTransferState(record, container) {
+    const status = container.querySelector('.order-transfer-status');
+    const button = container.querySelector('.order-start-button');
+    const state = orderTransferStates.get(record.recordId);
+    const transferred = state && state.status && state.status !== 'not_started' && state.status !== 'error';
+
+    if (transferred) {
+      status.textContent = '受注開始済み';
+      status.dataset.state = 'processed';
+      button.hidden = true;
+      return;
+    }
+    if (state && state.loading) {
+      status.textContent = '受注開始中...';
+      status.dataset.state = 'loading';
+      button.hidden = false;
+      button.disabled = true;
+      button.textContent = '受注開始中...';
+      return;
+    }
+    if (state && state.status === 'error') {
+      status.textContent = state.message || '状態確認に失敗しました';
+      status.dataset.state = 'error';
+    } else if (!orderStartEligible(record)) {
+      status.textContent = record.status === '受注' ? '見積番号未設定' : '受注開始不可';
+      status.dataset.state = 'unavailable';
+    } else {
+      status.textContent = '受注開始可能';
+      status.dataset.state = 'ready';
+    }
+    button.hidden = !orderStartEligible(record);
+    button.disabled = false;
+    button.textContent = '受注開始';
+  }
+
+  async function loadOrderTransferState(record, container) {
+    if (!orderTransferStates.has(record.recordId)) {
+      orderTransferStates.set(record.recordId, { loading: true });
+      applyOrderTransferState(record, container);
+      try {
+        const response = await fetch('/api/admin/order-start?record_id=' + encodeURIComponent(record.recordId), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin'
+        });
+        const result = await response.json().catch(function () { return {}; });
+        if (!response.ok || result.ok !== true) throw new Error('状態確認に失敗しました');
+        orderTransferStates.set(record.recordId, { status: result.status || 'not_started' });
+      } catch (error) {
+        orderTransferStates.set(record.recordId, { status: 'error', message: error.message || '状態確認に失敗しました' });
+      }
+    }
+    applyOrderTransferState(record, container);
+  }
+
+  async function startOrderTransfer(record, container) {
+    if (!orderStartEligible(record)) return;
+    if (!window.confirm('この見積を受注案件として業務システムへ移管します。実行後は受注開始済みとして管理されます。')) return;
+    orderTransferStates.set(record.recordId, { loading: true });
+    applyOrderTransferState(record, container);
+    try {
+      const response = await fetch('/api/admin/order-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ recordId: record.recordId })
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (result.status === 'already_processed') {
+        orderTransferStates.set(record.recordId, { status: 'ready' });
+      } else if (!response.ok || result.ok !== true) {
+        const messages = {
+          contract_not_confirmed: '契約状態を確認してください',
+          invalid_record_id: '受付番号を確認してください',
+          storage_error: '受注データの保存に失敗しました',
+          unauthorized: '認証を確認してください'
+        };
+        throw new Error(messages[result.status] || '受注開始に失敗しました');
+      } else {
+        orderTransferStates.set(record.recordId, { status: result.status || 'ready' });
+      }
+    } catch (error) {
+      orderTransferStates.set(record.recordId, { status: 'error', message: error.message || '受注開始に失敗しました' });
+    }
+    applyOrderTransferState(record, container);
+  }
+
+  function orderTransferControl(record) {
+    const container = document.createElement('div');
+    container.className = 'order-transfer-control';
+    const status = appendText(container, 'span', '状態確認中...', 'order-transfer-status');
+    status.setAttribute('role', 'status');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button order-start-button';
+    button.textContent = '受注開始';
+    button.addEventListener('click', function () { void startOrderTransfer(record, container); });
+    container.appendChild(button);
+    void loadOrderTransferState(record, container);
+    return container;
+  }
+
+  function setOrderQueueStatus(message, state) {
+    const status = byId('order-queue-status');
+    status.textContent = message;
+    status.dataset.state = state || '';
+  }
+
+  function renderOrderCandidates() {
+    const list = byId('order-candidate-list');
+    const badge = byId('order-count');
+    list.replaceChildren();
+    badge.textContent = '対象：' + orderCandidateCount + '件';
+    badge.dataset.state = orderCandidateCount > 0 ? 'remaining' : 'empty';
+    if (!orderCandidates.length) {
+      if (!orderQueueLoading) setOrderQueueStatus('見積提出後の管理案件はありません。', 'empty');
+      return;
+    }
+    orderCandidates.forEach(function (record) {
+      const card = document.createElement('article');
+      card.className = 'pending-inquiry-card order-candidate-card';
+      card.dataset.recordId = record.recordId;
+
+      const receipt = document.createElement('div');
+      appendText(receipt, 'small', '受付番号 / 見積番号');
+      appendText(receipt, 'strong', pendingReceiptNumber(record));
+      appendText(receipt, 'span', record.quoteNumber || '見積番号未設定');
+
+      const client = document.createElement('div');
+      appendText(client, 'small', '氏名 / 会社名');
+      appendText(client, 'strong', record.clientName || '氏名未入力');
+      appendText(client, 'span', record.companyName || '会社名なし');
+
+      const progress = document.createElement('div');
+      appendText(progress, 'small', '案件 / 契約状態');
+      appendText(progress, 'strong', record.estimateProjectName || record.projectName || '問い合わせ案件');
+      appendText(progress, 'span', record.status || '状態不明', 'active-status');
+
+      card.append(receipt, client, progress, orderTransferControl(record));
+      list.appendChild(card);
+    });
+  }
+
+  async function loadOrderCandidates(options) {
+    const settings = options || {};
+    if (orderQueueLoading) return orderCandidates;
+    const button = byId('load-order-candidates');
+    orderQueueLoading = true;
+    button.disabled = true;
+    if (!settings.silent) setOrderQueueStatus('受注管理対象を読み込んでいます。', 'loading');
+    try {
+      const response = await fetch('/api/order-start-candidates', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin'
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok || result.ok !== true || !Array.isArray(result.items)) {
+        if (response.status === 403) throw new Error('Cloudflare Accessで認証後に受注管理を利用できます。');
+        throw new Error('受注管理対象を読み込めませんでした。');
+      }
+      orderCandidates = result.items;
+      orderCandidateCount = Number.isFinite(Number(result.count)) ? Number(result.count) : orderCandidates.length;
+      renderOrderCandidates();
+      setOrderQueueStatus(orderCandidateCount
+        ? '見積提出後の案件が' + orderCandidateCount + '件あります。契約状態と受注移管状態を確認してください。'
+        : '見積提出後の管理案件はありません。', orderCandidateCount ? 'remaining' : 'empty');
+      return orderCandidates;
+    } catch (error) {
+      setOrderQueueStatus(error.message || '受注管理対象を読み込めませんでした。', 'error');
+      return orderCandidates;
+    } finally {
+      orderQueueLoading = false;
+      button.disabled = false;
+    }
   }
 
   function renderActiveInquiries() {
@@ -886,6 +1071,7 @@
     pendingInquiryCount = Math.max(0, pendingInquiryCount - 1);
     renderPendingInquiries();
     void loadActiveInquiries({ silent: true });
+    void loadOrderCandidates({ silent: true });
     markSheetDirty();
     updatePreview();
     setStatus(pendingReceiptNumber(record) + 'を取り込みました。ローカル判定とAPI判定を実行できます。');
@@ -1645,6 +1831,7 @@
     lastSheetSavedAt = String(result.savedAt || result.updatedAt || result.pdfIssuedAt || '');
     void loadPendingInquiries({ silent: true });
     await loadActiveInquiries({ silent: true });
+    void loadOrderCandidates({ silent: true });
     setStatus(verified
       ? 'PDF発行情報の保存をスプレッドシートで確認しました。見積書と全文版PDFを送付後、送付記録を登録してください。'
       : 'PDF発行情報をスプレッドシートへ保存しました。見積書と全文版PDFを送付後、送付記録を登録してください。');
@@ -1657,6 +1844,7 @@
     resetEstimateFormState();
     void loadPendingInquiries({ silent: true });
     await loadActiveInquiries({ silent: true });
+    void loadOrderCandidates({ silent: true });
     setStatus('取引条件・免責事項の送付記録を保存しました。');
   }
 
@@ -1703,6 +1891,7 @@
       showNextPendingAction();
       void loadPendingInquiries({ silent: true });
       await loadActiveInquiries({ silent: true });
+      void loadOrderCandidates({ silent: true });
       return true;
     } catch (error) {
       if (settings.pdf) {
@@ -2145,6 +2334,7 @@
   byId('save-to-sheet').addEventListener('click', function () { void saveEstimateToSheet(); });
   byId('load-pending-inquiries').addEventListener('click', function () { void loadPendingInquiries(); });
   byId('load-active-inquiries').addEventListener('click', function () { void loadActiveInquiries(); });
+  byId('load-order-candidates').addEventListener('click', function () { void loadOrderCandidates(); });
   byId('open-next-pending').addEventListener('click', function () { void openNextPendingInquiry(); });
   byId('save-json').addEventListener('click', downloadJson);
   byId('load-json-button').addEventListener('click', function () { byId('load-json').click(); });
@@ -2173,4 +2363,5 @@
   updatePreview();
   void loadPendingInquiries();
   void loadActiveInquiries();
+  void loadOrderCandidates();
 })(typeof window !== 'undefined' ? window : globalThis);

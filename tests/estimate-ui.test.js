@@ -18,6 +18,7 @@ const sheetRequests = [];
 const claimRequests = [];
 const verifyRequests = [];
 let activeListRequests = 0;
+const orderTransfers = new Map();
 let pdfSaveResponseMode = 'normal';
 const internalInquiryNotes = JSON.stringify({
   sourcePage: '/contact',
@@ -95,6 +96,34 @@ dom.window.fetch = async (url, options) => {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, count: items.length, items })
+    };
+  }
+  if (url === '/api/order-start-candidates') {
+    const items = pendingRecords.filter((record) => (
+      ['見積提出済み', '受注', '保留', '失注', '完了'].includes(record.status)
+      && record.quoteNumber
+    ));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, count: items.length, items })
+    };
+  }
+  if (String(url).startsWith('/api/admin/order-start?')) {
+    const recordId = new URL(String(url), 'https://example.test').searchParams.get('record_id');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, record_id: recordId, status: orderTransfers.get(recordId) || 'not_started' })
+    };
+  }
+  if (url === '/api/admin/order-start') {
+    const body = JSON.parse(options.body);
+    orderTransfers.set(body.recordId, 'ready');
+    return {
+      ok: true,
+      status: 201,
+      json: async () => ({ ok: true, record_id: body.recordId, status: 'ready' })
     };
   }
   if (url === '/api/load-inquiry') {
@@ -245,6 +274,7 @@ assert.match(document.querySelector('.sheet-save-help').textContent, /上書き�
 assert.equal(document.querySelector('#sheet-save-status').textContent.trim(), '未保存');
 assert.equal(document.querySelector('#load-pending-inquiries').textContent.trim(), '未対応案件を読み込む');
 assert.equal(document.querySelector('#load-active-inquiries').textContent.trim(), '作業中案件を読み込む');
+assert.equal(document.querySelector('#load-order-candidates').textContent.trim(), '受注管理を更新');
 assert.equal(document.querySelector('#active-inquiry-banner').hidden, true);
 assert.equal(document.querySelector('#preview-payment').textContent, '前払い（ご入金確認後に着手）');
 assert.equal(document.querySelector('#preview-pre-notice-list').children.length, 5);

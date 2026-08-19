@@ -61,6 +61,37 @@
   font-weight: 700;
 }
 
+.estimate-management-actions,
+.order-transfer-control {
+  display: grid;
+  gap: 7px;
+  justify-items: stretch;
+}
+
+.order-transfer-status {
+  color: #5b574f;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.order-transfer-status[data-state="ready"] {
+  color: var(--orange);
+}
+
+.order-transfer-status[data-state="processed"] {
+  color: #2d6945;
+}
+
+.order-transfer-status[data-state="error"] {
+  color: #a43820;
+}
+
+.order-start-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .current-inquiry-panel {
   width: min(1760px, calc(100% - 72px));
   margin: 0 auto 18px;
