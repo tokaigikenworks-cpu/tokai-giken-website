@@ -229,6 +229,10 @@ export function normalizePendingRecord(record) {
     clientName: text(record.clientName, 100),
     companyName: text(record.companyName, 150),
     email: text(record.email, 254),
+    phone: text(record.phone || record.phoneNumber || record.tel, 80),
+    department: text(record.department, 120),
+    postalCode: text(record.postalCode, 20),
+    address: text(record.address, 500),
     projectName: text(record.projectName, 200),
     inquiryText: text(record.inquiryText, 5000),
     delivery: text(record.delivery, 100),
@@ -415,6 +419,20 @@ export function normalizeActiveList(value) {
     ? Math.max(items.length, Number(value.count))
     : items.length;
   return { items, count };
+}
+
+export function normalizeOrderStartCandidates(value) {
+  const visibleStatuses = new Set(['見積提出済み', '受注', '保留', '失注', '完了']);
+  const rawItems = value && Array.isArray(value.items) ? value.items : [];
+  const items = rawItems
+    .map(normalizeActiveRecord)
+    .filter((record) => record && record.quoteNumber && visibleStatuses.has(record.status))
+    .sort((left, right) => pendingTimestamp(left) - pendingTimestamp(right))
+    .slice(0, MAX_PENDING_ITEMS);
+  return {
+    items,
+    count: Number.isFinite(Number(value && value.count)) ? Math.max(items.length, Number(value.count)) : items.length
+  };
 }
 
 export async function postToSheets(env, payload, fetchImpl = fetch, timeoutMs = SHEETS_TIMEOUT_MS) {

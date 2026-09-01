@@ -54,6 +54,19 @@
       <div id="active-inquiry-list" class="pending-inquiry-list active-inquiry-list" aria-live="polite"></div>
     </section>
 
+    <section class="pending-queue-panel order-queue-panel" aria-labelledby="order-queue-heading">
+      <div class="pending-queue-heading">
+        <div>
+          <p class="eyebrow">ORDER TRANSFER</p>
+          <h2 id="order-queue-heading">受注管理</h2>
+        </div>
+        <strong id="order-count" class="pending-count order-count" aria-live="polite">対象：確認中</strong>
+        <button id="load-order-candidates" class="button pending-load-button" type="button">受注管理を更新</button>
+      </div>
+      <p id="order-queue-status" class="pending-queue-status" role="status" aria-live="polite">見積提出後の案件を確認しています。</p>
+      <div id="order-candidate-list" class="pending-inquiry-list order-candidate-list" aria-live="polite"></div>
+    </section>
+
     <section id="active-inquiry-banner" class="active-inquiry-banner current-inquiry-panel" aria-label="現在処理中の案件" hidden>
       <div>
         <small>現在作業中の受付番号</small>

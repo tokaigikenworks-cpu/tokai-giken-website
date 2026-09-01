@@ -4,7 +4,7 @@
  * 既存doPost(e)でSecret検証とenvironmentから対象シートを決定した後、
  * 次のように呼び出してください。
  *
- * if (['listPendingInquiries', 'claimInquiry', 'listActiveInquiries', 'loadInquiry', 'verifyEstimateIssue'].indexOf(payload.action) !== -1) {
+ * if (['listPendingInquiries', 'claimInquiry', 'listActiveInquiries', 'listOrderStartCandidates', 'loadInquiry', 'verifyEstimateIssue'].indexOf(payload.action) !== -1) {
  *   return jsonResponse_(handlePendingQueueAction_(payload, targetSheet));
  * }
  *
@@ -25,6 +25,9 @@ function handlePendingQueueAction_(payload, targetSheet) {
   }
   if (payload.action === 'listActiveInquiries') {
     return listActiveInquiries_(targetSheet, payload.limit);
+  }
+  if (payload.action === 'listOrderStartCandidates') {
+    return listOrderStartCandidates_(targetSheet, payload.limit);
   }
   if (payload.action === 'loadInquiry') {
     return loadInquiry_(targetSheet, payload.recordId);
@@ -144,6 +147,26 @@ function listActiveInquiries_(sheet, requestedLimit) {
   };
 }
 
+function listOrderStartCandidates_(sheet, requestedLimit) {
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { ok: true, count: 0, items: [] };
+  var headers = values[0].map(String);
+  var map = pendingQueueHeaderMap_(headers);
+  if (map.recordId == null || map.status == null) return { ok: false, error: 'required_headers_missing' };
+  var visibleStatuses = { '見積提出済み': true, '受注': true, '保留': true, '失注': true, '完了': true };
+  var limit = Math.max(1, Math.min(100, Number(requestedLimit) || 100));
+  var items = values.slice(1).map(function (row) {
+    return pendingQueueRowRecord_(headers, row);
+  }).filter(function (record) {
+    return String(record.recordId || '').trim()
+      && String(record.quoteNumber || '').trim()
+      && visibleStatuses[String(record.status || '').trim()];
+  }).sort(function (left, right) {
+    return pendingQueueTimestamp_(left) - pendingQueueTimestamp_(right);
+  });
+  return { ok: true, count: items.length, items: items.slice(0, limit) };
+}
+
 function loadInquiry_(sheet, recordId) {
   var normalizedRecordId = String(recordId || '').trim();
   if (!normalizedRecordId) return { ok: false, error: 'invalid_record_id' };
@@ -160,7 +183,7 @@ function loadInquiry_(sheet, recordId) {
     if (String(values[index][map.recordId] || '').trim() !== normalizedRecordId) continue;
     var status = String(values[index][map.status] || '').trim();
     var issuedAwaitingTerms = status === '見積提出済み' && !String(values[index][map.termsSentAt] || '').trim();
-    if (status !== '確認中' && status !== '見積作成中' && !issuedAwaitingTerms) {
+    if (status !== '確認中' && status !== '見積作成中' && status !== '受注' && !issuedAwaitingTerms) {
       return { ok: false, error: 'invalid_status', status: status };
     }
     return { ok: true, record: pendingQueueRowRecord_(headers, values[index]) };
