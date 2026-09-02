@@ -1,0 +1,41 @@
+name = "tokai-giken-website"
+pages_build_output_dir = ""
+compatibility_date = "2026-07-14"
+
+[vars]
+ALLOWED_ORIGIN = "https://feature-estimate-tool-mvp.tokai-giken-website.pages.dev"
+CF_ACCESS_TEAM_DOMAIN = "https://withered-fog-25b6.cloudflareaccess.com"
+CONTACT_FROM = "トカイ技研 <contact@tokai-giken.com>"
+CONTACT_NOTIFICATION_TO = "tokaigiken.works@gmail.com"
+OPENAI_MODEL = "gpt-5.6-luna"
+SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyjy7JNoldUL5eBI38XeovVboX9faor7TQ8IJRgs7E2uZFV32eDsJ7sKJGioI3qtDtk/exec"
+
+[[d1_databases]]
+database_id = "0eb5348e-15f3-4e27-8c19-b102735e48df"
+binding = "CONTACT_DB"
+database_name = "CONTACT_DB"
+
+[[r2_buckets]]
+bucket_name = "tokai-giken-order-import-preview"
+binding = "ORDER_IMPORTS"
+
+[env.production.vars]
+ALLOWED_ORIGIN = "https://tokai-giken.com,https://www.tokai-giken.com,https://tokai-giken-website.pages.dev"
+CF_ACCESS_TEAM_DOMAIN = "https://withered-fog-25b6.cloudflareaccess.com"
+CONTACT_FROM = "トカイ技研 <contact@tokai-giken.com>"
+CONTACT_NOTIFICATION_TO = "tokaigiken.works@gmail.com"
+OPENAI_MODEL = "gpt-5.6-luna"
+SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxvZgXc6BT1A5Duy1GjF9Eg7g_TEvdH3LWuis9CgdMIuNx0UXLm45r1NTnQR1l4rpzI/exec"
+
+[[env.production.d1_databases]]
+database_id = "de3f67a5-46fa-422e-91a7-e4114e50e5c7"
+binding = "CONTACT_DB"
+database_name = "CONTACT_DB"
+
+[[env.production.r2_buckets]]
+bucket_name = "tokai-giken-contact-files-production"
+binding = "CONTACT_FILES"
+
+[[env.production.r2_buckets]]
+bucket_name = "tokai-giken-order-import-production"
+binding = "ORDER_IMPORTS"
