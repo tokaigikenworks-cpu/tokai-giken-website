@@ -236,44 +236,40 @@ function claimInquiry_(sheet, recordId) {
   var normalizedRecordId = String(recordId || '').trim();
   if (!normalizedRecordId) return { ok: false, error: 'invalid_record_id' };
 
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    var range = sheet.getDataRange();
-    var values = range.getValues();
-    if (values.length < 2) return { ok: false, error: 'record_not_found' };
+  // doPost(e) が取得済みの ScriptLock 内で呼ばれるため、ここでは再取得しない。
+  // Apps Script の ScriptLock は再入不可で、二重取得すると lock_timeout になる。
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+  if (values.length < 2) return { ok: false, error: 'record_not_found' };
 
-    var headers = values[0].map(String);
-    var map = pendingQueueHeaderMap_(headers);
-    if (map.recordId == null || map.status == null) {
-      return { ok: false, error: 'required_headers_missing' };
-    }
-
-    for (var index = 1; index < values.length; index += 1) {
-      if (String(values[index][map.recordId] || '').trim() !== normalizedRecordId) continue;
-
-      var currentStatus = String(values[index][map.status] || '').trim();
-      if (currentStatus !== '未対応') {
-        return { ok: false, error: 'already_claimed', status: currentStatus };
-      }
-
-      values[index][map.status] = '確認中';
-      sheet.getRange(index + 1, map.status + 1).setValue('確認中');
-      if (map.updatedAt != null) {
-        var updatedAt = new Date().toISOString();
-        values[index][map.updatedAt] = updatedAt;
-        sheet.getRange(index + 1, map.updatedAt + 1).setValue(updatedAt);
-      }
-      SpreadsheetApp.flush();
-
-      return {
-        ok: true,
-        action: 'claimed',
-        record: pendingQueueRowRecord_(headers, values[index])
-      };
-    }
-    return { ok: false, error: 'record_not_found' };
-  } finally {
-    lock.releaseLock();
+  var headers = values[0].map(String);
+  var map = pendingQueueHeaderMap_(headers);
+  if (map.recordId == null || map.status == null) {
+    return { ok: false, error: 'required_headers_missing' };
   }
+
+  for (var index = 1; index < values.length; index += 1) {
+    if (String(values[index][map.recordId] || '').trim() !== normalizedRecordId) continue;
+
+    var currentStatus = String(values[index][map.status] || '').trim();
+    if (currentStatus !== '未対応') {
+      return { ok: false, error: 'already_claimed', status: currentStatus };
+    }
+
+    values[index][map.status] = '確認中';
+    sheet.getRange(index + 1, map.status + 1).setValue('確認中');
+    if (map.updatedAt != null) {
+      var updatedAt = new Date().toISOString();
+      values[index][map.updatedAt] = updatedAt;
+      sheet.getRange(index + 1, map.updatedAt + 1).setValue(updatedAt);
+    }
+    SpreadsheetApp.flush();
+
+    return {
+      ok: true,
+      action: 'claimed',
+      record: pendingQueueRowRecord_(headers, values[index])
+    };
+  }
+  return { ok: false, error: 'record_not_found' };
 }
