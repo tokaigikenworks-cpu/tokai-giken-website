@@ -25,7 +25,7 @@ CF_ACCESS_TEAM_DOMAIN = "https://withered-fog-25b6.cloudflareaccess.com"
 CONTACT_FROM = "トカイ技研 <contact@tokai-giken.com>"
 CONTACT_NOTIFICATION_TO = "tokaigiken.works@gmail.com"
 OPENAI_MODEL = "gpt-5.6-luna"
-SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxvZgXc6BT1A5Duy1GjF9Eg7g_TEvdH3LWuis9CgdMIuNx0UXLm45r1NTnQR1l4rpzI/exec"
+SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyngfDZHaKTKdow6ckJb_dmvTbuMpHalDhAFglBcwBzMN-3Jy6AQiBw7IzVfLYYllX4/exec"
 
 [[env.production.d1_databases]]
 database_id = "de3f67a5-46fa-422e-91a7-e4114e50e5c7"
