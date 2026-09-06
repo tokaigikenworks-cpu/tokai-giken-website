@@ -5,8 +5,9 @@ import {
   queueAccessGranted,
   verifyQueueAccess
 } from './_pending-inquiries.js';
+import { queryOrderTransferLock } from '../lib/order-transfer-lock.js';
 
-const ACTIVE_STATUSES = new Set(['確認中', '見積作成中']);
+const LOADABLE_STATUSES = new Set(['確認中', '見積作成中', '見積提出済み', '受注', '保留', '失注', '完了']);
 
 export async function handleLoadInquiryRequest(request, env = {}, fetchImpl = fetch, timeoutMs, accessVerifier = verifyQueueAccess) {
   if (request.method !== 'POST') return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
@@ -40,11 +41,21 @@ export async function handleLoadInquiryRequest(request, env = {}, fetchImpl = fe
   if (!record || record.recordId !== recordId) {
     return jsonResponse({ ok: false, error: 'saved_data_corrupt' }, 502);
   }
-  const isIssuedAwaitingTerms = record.status === '見積提出済み' && !record.termsSentAt;
-  if (!ACTIVE_STATUSES.has(record.status) && !isIssuedAwaitingTerms) {
+  if (!LOADABLE_STATUSES.has(record.status)) {
     return jsonResponse({ ok: false, error: 'invalid_status', status: record.status }, 409);
   }
-  return jsonResponse({ ok: true, record }, 200);
+  let transferLock = { locked: false, status: 'not_started' };
+  try {
+    transferLock = await queryOrderTransferLock(env, recordId);
+  } catch (error) {
+    console.error('order transfer lock lookup failed while loading', { recordId, error: String(error) });
+  }
+  return jsonResponse({
+    ok: true,
+    record,
+    editLocked: transferLock.locked,
+    orderTransferStatus: transferLock.status
+  }, 200);
 }
 
 export function onRequest(context) {

@@ -263,6 +263,39 @@
   min-width: 0;
 }
 
+.estimate-lock-banner {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #c85a2a;
+  border-left: 4px solid var(--orange);
+  background: #fff4ea;
+  color: #34251e;
+}
+
+.estimate-lock-banner[hidden] {
+  display: none;
+}
+
+.estimate-lock-banner strong {
+  color: #a43820;
+  font-size: 14px;
+}
+
+.estimate-lock-banner span {
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.estimate-editor[data-edit-locked="true"] input:disabled,
+.estimate-editor[data-edit-locked="true"] select:disabled,
+.estimate-editor[data-edit-locked="true"] textarea:disabled {
+  color: #34312c;
+  opacity: 1;
+  -webkit-text-fill-color: #34312c;
+}
+
 .tool-panel {
   margin-bottom: 16px;
   padding: 28px 30px 30px;

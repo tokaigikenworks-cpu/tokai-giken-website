@@ -78,6 +78,10 @@
 
     <section class="estimate-workspace" aria-label="見積作成ワークスペース">
       <form id="estimate-form" class="estimate-editor" autocomplete="off">
+        <section id="estimate-lock-banner" class="estimate-lock-banner" role="status" aria-live="polite" hidden>
+          <strong>受注開始済み</strong>
+          <span>この見積は業務側へ移管済みのため編集できません。以降の変更は統合帳票Excel側で管理してください。</span>
+        </section>
         <section class="tool-panel" aria-labelledby="project-heading">
           <div class="panel-heading">
             <span>01</span>

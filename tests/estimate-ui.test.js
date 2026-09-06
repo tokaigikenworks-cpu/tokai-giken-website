@@ -139,7 +139,12 @@ dom.window.fetch = async (url, options) => {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: true, record: { ...source, ...legacySaved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' } })
+      json: async () => ({
+        ok: true,
+        record: { ...source, ...legacySaved, items: saved.items, updatedAt: '2026-07-21T18:00:00Z' },
+        editLocked: ['ready', 'processed', 'pending', 'error'].includes(orderTransfers.get(body.recordId)),
+        orderTransferStatus: orderTransfers.get(body.recordId) || 'not_started'
+      })
     };
   }
   if (url === '/api/claim-inquiry') {
@@ -659,12 +664,42 @@ async function testPendingQueueIntegration() {
   assert.equal(document.querySelectorAll('#line-items tr').length, 1);
   assert.equal(document.querySelectorAll('#preview-items tr').length, 0);
 
+  pendingRecords[0].status = '受注';
+  sheetRequests.filter((request) => request.body.record.recordId === recordIdBeforePdf).at(-1).body.record.status = '受注';
+  document.querySelector('#load-order-candidates').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  const lockedCard = document.querySelector('#order-candidate-list [data-record-id="pending-record-1"]');
+  assert.ok(lockedCard);
+  assert.equal(lockedCard.querySelector('.order-transfer-status').textContent, '受注開始可能');
+  lockedCard.querySelector('.order-start-button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(lockedCard.querySelector('.order-transfer-status').textContent, '受注開始済み');
+  assert.equal(lockedCard.querySelector('.order-start-button').hidden, true);
+  lockedCard.querySelector('.order-view-button').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.querySelector('#estimate-lock-banner').hidden, false);
+  assert.equal(document.querySelector('#estimate-form').dataset.editLocked, 'true');
+  assert.equal(document.querySelector('#project-name').disabled, true);
+  assert.equal(document.querySelector('#save-to-sheet').disabled, true);
+  assert.equal(document.querySelector('#load-json-button').disabled, true);
+  assert.equal(document.querySelector('#print-quote').disabled, false);
+  assert.equal(document.querySelector('#copy-summary').disabled, false);
+  const lockedSaveCount = sheetRequests.length;
+  const lockedPrintCount = printCalls;
+  document.querySelector('#estimate-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sheetRequests.length, lockedSaveCount);
+  assert.equal(printCalls, lockedPrintCount + 1);
+
   document.querySelector('#open-next-pending').click();
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(claimRequests.length, 2);
   assert.equal(claimRequests[1].recordId, 'pending-record-2');
   assert.equal(document.querySelector('#active-inquiry-id').textContent, 'TG-20260722-QUEUE0002');
+  assert.equal(document.querySelector('#estimate-lock-banner').hidden, true);
+  assert.equal(document.querySelector('#project-name').disabled, false);
 
   pendingRecords.forEach((record) => { record.status = '確認中'; });
   document.querySelector('#load-pending-inquiries').click();
@@ -781,7 +816,7 @@ async function testApiIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(document.querySelector('#sheet-save-status').dataset.state, 'error');
   assert.equal(document.querySelector('#project-name').value, projectBeforeFailure);
-  assert.equal(printCalls, 3);
+  assert.equal(printCalls, 4);
 }
 
 testPendingQueueIntegration()

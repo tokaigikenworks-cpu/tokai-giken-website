@@ -438,6 +438,8 @@
   let orderCandidateCount = 0;
   let orderQueueLoading = false;
   const orderTransferStates = new Map();
+  let estimateEditLocked = false;
+  let currentOrderTransferStatus = 'not_started';
   const configuredTerms = normalizedTermsConfig(root.TOKAI_TERMS_CONFIG);
   let termsSnapshot = normalizedTermsConfig(configuredTerms);
   let termsSentAt = '';
@@ -606,11 +608,46 @@
     return record.status === '受注' && Boolean(String(record.quoteNumber || '').trim());
   }
 
+  function orderTransferLocksEstimate(status) {
+    return ['ready', 'processed', 'pending', 'error', 'already_processed'].includes(String(status || '').toLowerCase());
+  }
+
+  function setEstimateEditLock(locked, transferStatus) {
+    estimateEditLocked = Boolean(locked);
+    currentOrderTransferStatus = String(transferStatus || (locked ? 'ready' : 'not_started'));
+    form.dataset.editLocked = estimateEditLocked ? 'true' : 'false';
+    byId('estimate-lock-banner').hidden = !estimateEditLocked;
+
+    const mutationButtonIds = [
+      'classify-with-api', 'adopt-api-classification', 'apply-category', 'add-item',
+      'mark-terms-sent', 'save-to-sheet', 'load-json-button', 'reset-estimate'
+    ];
+    const controls = Array.from(form.querySelectorAll('input, select, textarea'))
+      .concat(mutationButtonIds.map(byId).filter(Boolean))
+      .concat(Array.from(form.querySelectorAll('.remove-item')));
+
+    controls.forEach(function (control) {
+      if (estimateEditLocked) {
+        if (!control.dataset.lockPriorDisabled) {
+          control.dataset.lockPriorDisabled = control.disabled ? 'true' : 'false';
+        }
+        control.disabled = true;
+      } else if (control.dataset.lockPriorDisabled) {
+        control.disabled = control.dataset.lockPriorDisabled === 'true';
+        delete control.dataset.lockPriorDisabled;
+      }
+    });
+    if (estimateEditLocked) {
+      setSheetSaveStatus('locked', '受注開始済み・編集不可');
+      setStatus('この見積は受注時点の確定記録です。閲覧・印刷のみ利用できます。');
+    }
+  }
+
   function applyOrderTransferState(record, container) {
     const status = container.querySelector('.order-transfer-status');
     const button = container.querySelector('.order-start-button');
     const state = orderTransferStates.get(record.recordId);
-    const transferred = state && state.status && state.status !== 'not_started' && state.status !== 'error';
+    const transferred = state && orderTransferLocksEstimate(state.status);
 
     if (transferred) {
       status.textContent = '受注開始済み';
@@ -626,7 +663,7 @@
       button.textContent = '受注開始中...';
       return;
     }
-    if (state && state.status === 'error') {
+    if (state && state.queryError) {
       status.textContent = state.message || '状態確認に失敗しました';
       status.dataset.state = 'error';
     } else if (!orderStartEligible(record)) {
@@ -654,8 +691,11 @@
         const result = await response.json().catch(function () { return {}; });
         if (!response.ok || result.ok !== true) throw new Error('状態確認に失敗しました');
         orderTransferStates.set(record.recordId, { status: result.status || 'not_started' });
+        if (recordId === record.recordId && orderTransferLocksEstimate(result.status)) {
+          setEstimateEditLock(true, result.status);
+        }
       } catch (error) {
-        orderTransferStates.set(record.recordId, { status: 'error', message: error.message || '状態確認に失敗しました' });
+        orderTransferStates.set(record.recordId, { queryError: true, message: error.message || '状態確認に失敗しました' });
       }
     }
     applyOrderTransferState(record, container);
@@ -687,8 +727,9 @@
       } else {
         orderTransferStates.set(record.recordId, { status: result.status || 'ready' });
       }
+      if (recordId === record.recordId) setEstimateEditLock(true, result.status || 'ready');
     } catch (error) {
-      orderTransferStates.set(record.recordId, { status: 'error', message: error.message || '受注開始に失敗しました' });
+      orderTransferStates.set(record.recordId, { queryError: true, message: error.message || '受注開始に失敗しました' });
     }
     applyOrderTransferState(record, container);
   }
@@ -703,7 +744,12 @@
     button.className = 'button order-start-button';
     button.textContent = '受注開始';
     button.addEventListener('click', function () { void startOrderTransfer(record, container); });
-    container.appendChild(button);
+    const viewButton = document.createElement('button');
+    viewButton.type = 'button';
+    viewButton.className = 'button secondary-button order-view-button';
+    viewButton.textContent = '内容を確認';
+    viewButton.addEventListener('click', function () { void openOrderCandidate(record.recordId); });
+    container.append(button, viewButton);
     void loadOrderTransferState(record, container);
     return container;
   }
@@ -769,6 +815,7 @@
       }
       orderCandidates = result.items;
       orderCandidateCount = Number.isFinite(Number(result.count)) ? Number(result.count) : orderCandidates.length;
+      orderTransferStates.clear();
       renderOrderCandidates();
       setOrderQueueStatus(orderCandidateCount
         ? '見積提出後の案件が' + orderCandidateCount + '件あります。契約状態と受注移管状態を確認してください。'
@@ -781,6 +828,10 @@
       orderQueueLoading = false;
       button.disabled = false;
     }
+  }
+
+  async function openOrderCandidate(recordIdToLoad) {
+    return resumeActiveInquiry(recordIdToLoad, { source: 'order' });
   }
 
   function renderActiveInquiries() {
@@ -945,7 +996,8 @@
     };
   }
 
-  async function resumeActiveInquiry(recordIdToLoad) {
+  async function resumeActiveInquiry(recordIdToLoad, options) {
+    const settings = options || {};
     if (activeInquiryRecord && activeInquiryRecord.recordId !== recordIdToLoad) {
       if (!window.confirm('現在の案件から別の作業中案件へ切り替えますか？未保存の変更がある場合は先に途中保存してください。')) return false;
     }
@@ -971,12 +1023,26 @@
         throw new Error(messages[result.error] || '作業を再開できませんでした。');
       }
       loadData(loadedInquiryData(result.record));
+      setEstimateEditLock(Boolean(result.editLocked), result.orderTransferStatus);
       renderActiveInquiries();
-      setActiveQueueStatus('受付番号' + pendingReceiptNumber(result.record) + 'の作業を再開しました。', 'success');
-      setStatus('保存済みの見積内容を復元しました。同じ案件の行へ上書き保存されます。');
+      if (settings.source === 'order') {
+        setOrderQueueStatus(
+          '受付番号' + pendingReceiptNumber(result.record) + (result.editLocked ? 'を閲覧用に開きました。' : 'を編集用に開きました。'),
+          'success'
+        );
+      } else {
+        setActiveQueueStatus('受付番号' + pendingReceiptNumber(result.record) + 'の作業を再開しました。', 'success');
+      }
+      setStatus(result.editLocked
+        ? '受注開始時点の確定内容を表示しています。編集はできません。'
+        : '保存済みの見積内容を復元しました。同じ案件の行へ上書き保存されます。');
       return true;
     } catch (error) {
-      setActiveQueueStatus(error.message || '作業を再開できませんでした。', 'error');
+      if (settings.source === 'order') {
+        setOrderQueueStatus(error.message || '見積内容を開けませんでした。', 'error');
+      } else {
+        setActiveQueueStatus(error.message || '作業を再開できませんでした。', 'error');
+      }
       renderActiveInquiries();
       return false;
     }
@@ -1032,6 +1098,7 @@
   }
 
   function applyClaimedInquiry(record) {
+    setEstimateEditLock(false, 'not_started');
     activeInquiryRecord = record;
     recordId = record.recordId;
     recordCreatedAt = record.createdAt || record.inquiryReceivedAt || currentTimestamp();
@@ -1253,6 +1320,26 @@
     } else {
       openPrintDialog();
     }
+  }
+
+  function printLockedEstimate() {
+    updatePreview();
+    const originalTitle = document.title;
+    let restored = false;
+    const restoreTitle = function () {
+      if (restored) return;
+      restored = true;
+      window.removeEventListener('afterprint', restoreTitle);
+      document.title = originalTitle;
+    };
+    const openPrintDialog = function () {
+      window.addEventListener('afterprint', restoreTitle, { once: true });
+      window.print();
+      restoreTitle();
+    };
+    document.title = fields.quoteNumber.value.trim() || '見積書';
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(openPrintDialog);
+    else openPrintDialog();
   }
 
   function setInitialValues() {
@@ -1849,6 +1936,11 @@
   }
 
   async function saveEstimateToSheet(options) {
+    if (estimateEditLocked) {
+      setSheetSaveStatus('locked', '受注開始済み・編集不可');
+      setStatus('受注開始済みの案件は編集できません。');
+      return false;
+    }
     const settings = options || {};
     const button = byId('save-to-sheet');
     const revisionAtStart = sheetRevision;
@@ -1868,6 +1960,10 @@
       });
       const result = await response.json().catch(function () { return {}; });
       if (!response.ok || result.ok !== true || result.recordId !== recordId) {
+        if (result.error === 'ORDER_ALREADY_STARTED') {
+          setEstimateEditLock(true, result.transferStatus || currentOrderTransferStatus || 'ready');
+          throw new Error(result.message || '受注開始済みの案件は編集できません。');
+        }
         if (response.status === 409 || result.error === 'update_conflict') {
           throw new Error('別の画面で先に更新されています。作業中案件を再読み込みして内容を確認してください。');
         }
@@ -1911,7 +2007,7 @@
       return false;
     } finally {
       window.clearTimeout(timeout);
-      button.disabled = false;
+      button.disabled = estimateEditLocked;
     }
   }
 
@@ -2251,6 +2347,7 @@
   }
 
   function resetEstimateFormState() {
+    setEstimateEditLock(false, 'not_started');
     form.reset();
     itemContainer.replaceChildren();
     clearImagePreviews();
@@ -2304,9 +2401,11 @@
   form.addEventListener('submit', function (event) {
     event.preventDefault();
     updatePreview();
-    printEstimate();
+    if (estimateEditLocked) printLockedEstimate();
+    else printEstimate();
   });
   itemContainer.addEventListener('click', function (event) {
+    if (estimateEditLocked) return;
     const button = event.target.closest('.remove-item');
     if (!button) return;
     button.closest('tr').remove();
@@ -2314,6 +2413,7 @@
     updatePreview();
   });
   byId('add-item').addEventListener('click', function () {
+    if (estimateEditLocked) return;
     addLineItem();
     markSheetDirty();
   });
@@ -2337,7 +2437,9 @@
   byId('load-order-candidates').addEventListener('click', function () { void loadOrderCandidates(); });
   byId('open-next-pending').addEventListener('click', function () { void openNextPendingInquiry(); });
   byId('save-json').addEventListener('click', downloadJson);
-  byId('load-json-button').addEventListener('click', function () { byId('load-json').click(); });
+  byId('load-json-button').addEventListener('click', function () {
+    if (!estimateEditLocked) byId('load-json').click();
+  });
   byId('load-json').addEventListener('change', function (event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
