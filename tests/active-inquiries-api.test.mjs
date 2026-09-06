@@ -8,6 +8,11 @@ const env = {
   SHEETS_SHARED_SECRET: 'shared-secret'
 };
 const allowAccess = async () => true;
+const lockDb = (status) => ({
+  prepare: () => ({
+    bind: () => ({ first: async () => status ? { transfer_status: status } : null })
+  })
+});
 const headers = {
   'Cf-Access-Jwt-Assertion': 'test-jwt',
   'Cf-Access-Authenticated-User-Email': 'owner@example.com'
@@ -129,7 +134,7 @@ const issuedAwaitingSend = await handleLoadInquiryRequest(loadRequest('submitted
 }, undefined, allowAccess);
 assert.equal(issuedAwaitingSend.status, 200);
 
-const invalidStatus = await handleLoadInquiryRequest(loadRequest('submitted-sent'), env, async () => {
+const submittedSent = await handleLoadInquiryRequest(loadRequest('submitted-sent'), env, async () => {
   return new Response(JSON.stringify({
     ok: true,
     record: {
@@ -139,8 +144,24 @@ const invalidStatus = await handleLoadInquiryRequest(loadRequest('submitted-sent
     }
   }), { headers: { 'Content-Type': 'application/json' } });
 }, undefined, allowAccess);
-assert.equal(invalidStatus.status, 409);
-assert.equal((await invalidStatus.json()).error, 'invalid_status');
+assert.equal(submittedSent.status, 200);
+
+const lockedOrder = await handleLoadInquiryRequest(loadRequest('ordered'), {
+  ...env,
+  CONTACT_DB: lockDb('ready')
+}, async () => {
+  return new Response(JSON.stringify({
+    ok: true,
+    record: { recordId: 'ordered', status: '受注', quoteNumber: '20260905_1' }
+  }), { headers: { 'Content-Type': 'application/json' } });
+}, undefined, allowAccess);
+assert.equal(lockedOrder.status, 200);
+const lockedOrderData = await lockedOrder.json();
+assert.equal(lockedOrderData.ok, true);
+assert.equal(lockedOrderData.record.recordId, 'ordered');
+assert.equal(lockedOrderData.record.status, '受注');
+assert.equal(lockedOrderData.editLocked, true);
+assert.equal(lockedOrderData.orderTransferStatus, 'ready');
 
 const noAccess = await handleActiveInquiriesRequest(listRequest(), env, fetch, undefined, async () => false);
 assert.equal(noAccess.status, 403);

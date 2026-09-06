@@ -1,4 +1,5 @@
 import { queryVerifiedEstimateIssue } from './verify-estimate.js';
+import { queryOrderTransferLock } from '../lib/order-transfer-lock.js';
 
 const SHEETS_TIMEOUT_MS = 10000;
 const VERIFY_TIMEOUT_MS = 6000;
@@ -48,6 +49,25 @@ export async function handleSaveEstimateRequest(request, env = {}, fetchImpl = f
   }
   if (!env.SHEETS_WEB_APP_URL || !env.SHEETS_SHARED_SECRET) {
     return jsonResponse({ ok: false, error: 'sheets_not_configured' }, 503);
+  }
+
+  let transferLock;
+  try {
+    transferLock = await queryOrderTransferLock(env, recordId);
+  } catch (error) {
+    console.error('order transfer lock lookup failed', { recordId, error: String(error) });
+    return jsonResponse({ ok: false, error: 'order_lock_unavailable' }, 503);
+  }
+  if (!transferLock.available) {
+    return jsonResponse({ ok: false, error: 'order_lock_unavailable' }, 503);
+  }
+  if (transferLock.locked) {
+    return jsonResponse({
+      ok: false,
+      error: 'ORDER_ALREADY_STARTED',
+      message: '受注開始済みの案件は編集できません。',
+      transferStatus: transferLock.status
+    }, 409);
   }
 
   const controller = new AbortController();

@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import { handleSaveEstimateRequest } from '../functions/api/save-estimate.js';
 
+function lockDb(status) {
+  return {
+    prepare(sql) {
+      assert.match(sql, /SELECT transfer_status FROM order_transfers/);
+      return {
+        bind() {
+          return { first: async () => status ? { transfer_status: status } : null };
+        }
+      };
+    }
+  };
+}
+
 function request(body, method = 'POST') {
   return new Request('https://example.test/api/save-estimate', {
     method,
@@ -12,7 +25,8 @@ function request(body, method = 'POST') {
 const env = {
   SHEETS_WEB_APP_URL: 'https://script.google.test/exec',
   SHEETS_SHARED_SECRET: 'server-only-secret',
-  CF_PAGES_BRANCH: 'feature/estimate-tool-mvp'
+  CF_PAGES_BRANCH: 'feature/estimate-tool-mvp',
+  CONTACT_DB: lockDb(null)
 };
 
 let forwarded = null;
@@ -40,6 +54,38 @@ assert.equal(forwarded.body.environment, 'preview');
 assert.equal(forwarded.body.record.recordId, 'record-1');
 assert.equal(forwarded.options.redirect, 'follow');
 assert.doesNotMatch(JSON.stringify(successData), /server-only-secret|機密の問い合わせ|作業費/);
+
+for (const transferStatus of ['ready', 'processed', 'pending', 'error']) {
+  let saveForwarded = false;
+  const locked = await handleSaveEstimateRequest(request({ record: { recordId: 'record-locked' } }), {
+    ...env,
+    CONTACT_DB: lockDb(transferStatus)
+  }, async () => {
+    saveForwarded = true;
+    return new Response('{}');
+  });
+  assert.equal(locked.status, 409);
+  assert.deepEqual(await locked.json(), {
+    ok: false,
+    error: 'ORDER_ALREADY_STARTED',
+    message: '受注開始済みの案件は編集できません。',
+    transferStatus
+  });
+  assert.equal(saveForwarded, false);
+}
+
+const creatingNotLocked = await handleSaveEstimateRequest(request({ record: { recordId: 'record-1' } }), {
+  ...env,
+  CONTACT_DB: lockDb('creating')
+}, successFetch);
+assert.equal(creatingNotLocked.status, 200);
+
+const missingLockBinding = await handleSaveEstimateRequest(request({ record: { recordId: 'record-1' } }), {
+  SHEETS_WEB_APP_URL: env.SHEETS_WEB_APP_URL,
+  SHEETS_SHARED_SECRET: env.SHEETS_SHARED_SECRET
+}, successFetch);
+assert.equal(missingLockBinding.status, 503);
+assert.equal((await missingLockBinding.json()).error, 'order_lock_unavailable');
 
 let productionForwarded = null;
 await handleSaveEstimateRequest(request({ record: { recordId: 'record-1' } }), {
